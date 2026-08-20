@@ -7,14 +7,14 @@ Session Shelf is a local-first Wails desktop application. Keep transcript conten
 - Go 1.25 or newer
 - Node.js 22.5 or newer and npm
 - Wails v3 CLI (`wails3`)
-- Windows: WebView2; macOS: Xcode Command Line Tools; Linux: the GTK/WebKitGTK development packages required by Wails
+- Windows: WebView2; macOS: Xcode Command Line Tools; Linux: Ubuntu 24.04+/GTK4/WebKitGTK 6 or the Wails-supported equivalent for the target distribution
 
 ## Local workflow
 
 ```sh
 npm ci
 npm run build
-wails3 generate bindings -b
+wails3 generate bindings
 wails3 dev
 ```
 
@@ -30,6 +30,8 @@ git diff --check
 ```
 
 Keep commits focused and reversible. A migration or feature slice should include its tests and documentation, and should not depend on a user’s private Codex storage layout.
+
+The GitHub Actions matrix runs JavaScript checks, Go tests, and a native Wails build on Windows, macOS, and Ubuntu 24.04. Keep fixtures synthetic and do not add generated `frontend/dist` or `build/bin` output.
 
 ## Cross-platform changes
 

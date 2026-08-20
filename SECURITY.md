@@ -12,5 +12,7 @@ Include the affected commit or release, operating system, reproduction steps usi
 
 - The application is designed to operate locally and does not require a network service for its desktop build.
 - Scans should be metadata-only; transcript previews are explicitly selected and bounded.
-- Destructive operations must remain confirmation-gated, path-validated, and recoverable through the operating system trash where available.
+- The local metadata index and title aliases are stored in the per-user Session Shelf configuration directory; they must not be committed or uploaded.
+- Destructive operations must remain confirmation-gated, path-validated, preflighted against the latest file signature, and recoverable through the operating system trash where available.
+- Catalog cleanup must create a SQLite backup before deleting rows, and a cleanup failure must not remove that backup.
 - Never commit real Codex sessions, Catalog DB files, credentials, or generated diagnostic dumps.

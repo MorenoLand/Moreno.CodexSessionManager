@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible problem with Session Shelf.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach real Codex transcripts, Catalog DB files, or paths containing personal data.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: List the platform, Session Shelf version or commit, and minimal steps.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: Windows 11, macOS, or Ubuntu 24.04
+    validations:
+      required: true
