@@ -12,10 +12,11 @@ import * as $models from "./models.js";
 
 /**
  * @param {string[]} paths
+ * @param {boolean} removeCatalogRows
  * @returns {$CancellablePromise<$models.ArchiveResponse>}
  */
-export function Archive(paths) {
-    return $Call.ByID(4115508224, paths).then(/** @type {($result: any) => any} */(($result) => {
+export function Archive(paths, removeCatalogRows) {
+    return $Call.ByID(4115508224, paths, removeCatalogRows).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType0($result);
     }));
 }
@@ -132,10 +133,11 @@ export function Reveal(filename) {
 
 /**
  * @param {string[]} paths
+ * @param {boolean} removeCatalogRows
  * @returns {$CancellablePromise<$models.ArchiveReview>}
  */
-export function ReviewArchive(paths) {
-    return $Call.ByID(2681842648, paths).then(/** @type {($result: any) => any} */(($result) => {
+export function ReviewArchive(paths, removeCatalogRows) {
+    return $Call.ByID(2681842648, paths, removeCatalogRows).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType8($result);
     }));
 }

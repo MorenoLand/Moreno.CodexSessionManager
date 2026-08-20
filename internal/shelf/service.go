@@ -255,6 +255,7 @@ type ArchiveCheck struct {
 	Path                string `json:"path"`
 	Destination         string `json:"destination"`
 	Name                string `json:"name"`
+	ThreadID            string `json:"threadId"`
 	OK                  bool   `json:"ok"`
 	Error               string `json:"error,omitempty"`
 	CurrentSizeBytes    int64  `json:"currentSizeBytes"`
@@ -269,10 +270,18 @@ type ArchiveReview struct {
 	ArchivedRoot string         `json:"archivedRoot"`
 	Error        string         `json:"error,omitempty"`
 	Files        []ArchiveCheck `json:"files"`
+	Catalog      CatalogCheck   `json:"catalog"`
 }
 
 type ArchiveResponse struct {
-	Result []ArchiveItem `json:"result"`
+	Result  []ArchiveItem `json:"result"`
+	Catalog struct {
+		Requested  int      `json:"requested"`
+		Removed    int      `json:"removed"`
+		IDs        []string `json:"ids"`
+		BackupPath string   `json:"backupPath"`
+		Error      string   `json:"error"`
+	} `json:"catalog"`
 }
 
 type scanSnapshot struct {
@@ -1607,13 +1616,13 @@ func (s *Service) Recycle(paths []string, removeCatalogRows bool) (RecycleRespon
 	return response, nil
 }
 
-func (s *Service) ReviewArchive(paths []string) (ArchiveReview, error) {
+func (s *Service) ReviewArchive(paths []string, removeCatalogRows bool) (ArchiveReview, error) {
 	unique := uniqueStrings(paths)
 	if len(unique) == 0 {
 		return ArchiveReview{}, errors.New("No files selected")
 	}
 	locations := s.locations()
-	review := ArchiveReview{Safe: true, ArchivedRoot: locations.ArchivedRoot, Files: []ArchiveCheck{}}
+	review := ArchiveReview{Safe: true, ArchivedRoot: locations.ArchivedRoot, Files: []ArchiveCheck{}, Catalog: CatalogCheck{DBPath: locations.CatalogDB, ThreadIDs: []string{}}}
 	for _, filename := range unique {
 		check := s.checkArchiveFile(filename)
 		review.Files = append(review.Files, check)
@@ -1622,6 +1631,20 @@ func (s *Service) ReviewArchive(paths []string) (ArchiveReview, error) {
 			continue
 		}
 		review.TotalBytes += check.CurrentSizeBytes
+		if check.ThreadID != "" {
+			review.Catalog.ThreadIDs = append(review.Catalog.ThreadIDs, check.ThreadID)
+		}
+	}
+	review.Catalog.ThreadIDs = uniqueUUIDs(review.Catalog.ThreadIDs)
+	review.Catalog.Requested = len(review.Catalog.ThreadIDs)
+	if removeCatalogRows && review.Catalog.Requested > 0 {
+		info, err := os.Stat(locations.CatalogDB)
+		review.Catalog.Available = err == nil && !info.IsDir()
+		review.Catalog.BackupRequired = true
+		if !review.Catalog.Available {
+			review.Catalog.Error = "Catalog DB is unavailable; matching entries cannot be removed safely."
+			review.Safe = false
+		}
 	}
 	return review, nil
 }
@@ -1632,7 +1655,7 @@ func (s *Service) checkArchiveFile(filename string) ArchiveCheck {
 		absolute = filepath.Clean(filename)
 	}
 	locations := s.locations()
-	check := ArchiveCheck{Path: absolute, Name: filepath.Base(absolute)}
+	check := ArchiveCheck{Path: absolute, Name: filepath.Base(absolute), ThreadID: threadIDFromPath(absolute)}
 	if pathsOverlap(locations.CurrentRoot, locations.ArchivedRoot) {
 		check.Error = "Current and archived session directories must not overlap."
 		return check
@@ -1703,6 +1726,9 @@ func archiveReviewError(review ArchiveReview) error {
 		if !file.OK {
 			return fmt.Errorf("Archive blocked for %s: %s", file.Name, file.Error)
 		}
+	}
+	if review.Catalog.Error != "" {
+		return errors.New(review.Catalog.Error)
 	}
 	return errors.New("Archive blocked by a safety check")
 }
@@ -1776,8 +1802,8 @@ func moveSessionFile(source, destination string, expectedSize int64, expectedMod
 	return os.Remove(source)
 }
 
-func (s *Service) Archive(paths []string) (ArchiveResponse, error) {
-	review, err := s.ReviewArchive(paths)
+func (s *Service) Archive(paths []string, removeCatalogRows bool) (ArchiveResponse, error) {
+	review, err := s.ReviewArchive(paths, removeCatalogRows)
 	if err != nil {
 		return ArchiveResponse{}, err
 	}
@@ -1785,6 +1811,13 @@ func (s *Service) Archive(paths []string) (ArchiveResponse, error) {
 		return ArchiveResponse{}, archiveReviewError(review)
 	}
 	response := ArchiveResponse{Result: []ArchiveItem{}}
+	backupPath := ""
+	if removeCatalogRows && review.Catalog.BackupRequired {
+		backupPath, err = backupCatalogDatabase(review.Catalog.DBPath)
+		if err != nil {
+			return ArchiveResponse{}, err
+		}
+	}
 	for _, file := range review.Files {
 		item := ArchiveItem{Path: file.Path, Destination: file.Destination}
 		if err := moveSessionFile(file.Path, file.Destination, file.CurrentSizeBytes, file.CurrentLastModified); err != nil {
@@ -1793,6 +1826,26 @@ func (s *Service) Archive(paths []string) (ArchiveResponse, error) {
 			item.OK = true
 		}
 		response.Result = append(response.Result, item)
+	}
+	if removeCatalogRows {
+		for _, item := range response.Result {
+			if item.OK {
+				if id := threadIDFromPath(item.Path); id != "" {
+					response.Catalog.IDs = append(response.Catalog.IDs, id)
+				}
+			}
+		}
+		response.Catalog.IDs = uniqueUUIDs(response.Catalog.IDs)
+		response.Catalog.Requested = len(response.Catalog.IDs)
+		if len(response.Catalog.IDs) > 0 {
+			removed, err := s.removeCatalogRows("REMOVE", response.Catalog.IDs, backupPath)
+			if err != nil {
+				response.Catalog.Error = err.Error()
+			} else {
+				response.Catalog.Removed = removed.Removed
+				response.Catalog.BackupPath = removed.BackupPath
+			}
+		}
 	}
 	return response, nil
 }

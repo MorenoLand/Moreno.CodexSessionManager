@@ -111,9 +111,9 @@ export async function apiRecycle(paths, removeCatalogRows) {
   return service ? service.Recycle(paths, removeCatalogRows) : request('/api/recycle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
 }
 
-export async function apiArchive(paths) {
+export async function apiArchive(paths, removeCatalogRows) {
   const service = await wailsService();
-  return service ? service.Archive(paths) : request('/api/archive', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths }) });
+  return service ? service.Archive(paths, removeCatalogRows) : request('/api/archive', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
 }
 
 export async function apiSaveTitleAlias(rootId, title) {
@@ -132,7 +132,7 @@ export async function apiReviewRecycle(paths, removeCatalogRows) {
   return service ? service.ReviewRecycle(paths, removeCatalogRows) : request('/api/recycle/review', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
 }
 
-export async function apiReviewArchive(paths) {
+export async function apiReviewArchive(paths, removeCatalogRows) {
   const service = await wailsService();
-  return service ? service.ReviewArchive(paths) : request('/api/archive/review', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths }) });
+  return service ? service.ReviewArchive(paths, removeCatalogRows) : request('/api/archive/review', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
 }

@@ -74,7 +74,7 @@ Override locations per process when the Codex installation uses a different layo
 - **Storage locations** edits the absolute current-session, archived-session, and Catalog DB paths and saves them persistently.
 - In the Wails desktop app, **Browse** uses native folder/file dialogs; overlapping current/archive roots are rejected before saving.
 - **Search transcript** streams a selected root for message matches, while the Overview can export metadata as JSON or CSV.
-- Active conversations can be archived directly from the inspector after a fresh preflight; paths are preserved below the configured archive root and Catalog DB rows remain intact.
+- Active conversations can be archived directly from the inspector after a fresh preflight; paths are preserved below the configured archive root, and optional Catalog DB cleanup creates a SQLite backup before removing matching Codex sidebar rows.
 - **Diagnostics** reports platform support, configured storage availability, trash support, scan status, and local index state.
 - Selections persist across roots in the Review queue, so bulk review does not silently narrow to the currently highlighted conversation.
 - **Rename** creates a local title alias when the Codex catalog title is missing or noisy; aliases are stored separately from transcripts.

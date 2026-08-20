@@ -197,11 +197,11 @@ func TestArchiveMovesFilesToConfiguredArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.lastScan[pathKey(filename)] = scanSnapshot{SizeBytes: info.Size(), LastModified: info.ModTime().UTC().Format(time.RFC3339Nano)}
-	review, err := service.ReviewArchive([]string{filename})
+	review, err := service.ReviewArchive([]string{filename}, false)
 	if err != nil || !review.Safe || len(review.Files) != 1 {
 		t.Fatalf("expected safe archive review, review=%+v err=%v", review, err)
 	}
-	response, err := service.Archive([]string{filename})
+	response, err := service.Archive([]string{filename}, false)
 	if err != nil || len(response.Result) != 1 || !response.Result[0].OK {
 		t.Fatalf("expected archive move, response=%+v err=%v", response, err)
 	}
@@ -211,5 +211,57 @@ func TestArchiveMovesFilesToConfiguredArchive(t *testing.T) {
 	}
 	if _, err := os.Stat(filename); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("source file still exists or could not be checked: %v", err)
+	}
+}
+
+func TestArchiveCanRemoveCatalogRows(t *testing.T) {
+	root := t.TempDir()
+	sessions := filepath.Join(root, "sessions")
+	if err := os.MkdirAll(sessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	catalog := filepath.Join(root, "catalog.db")
+	database, err := sql.Open("sqlite", catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.Exec("CREATE TABLE local_thread_catalog (host_id TEXT, thread_id TEXT); CREATE TABLE local_thread_catalog_metadata (id INTEGER PRIMARY KEY, catalog_revision INTEGER); INSERT INTO local_thread_catalog_metadata(id, catalog_revision) VALUES (1, 0); INSERT INTO local_thread_catalog(host_id, thread_id) VALUES ('local', '01a01cc5-38a6-7431-bb4c-965672f007f6');")
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(root, "archive")
+	filename := filepath.Join(sessions, "rollout-2026-08-20-01a01cc5-38a6-7431-bb4c-965672f007f6.jsonl")
+	if err := os.WriteFile(filename, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := testService(t, sessions, archive, catalog)
+	info, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.lastScan[pathKey(filename)] = scanSnapshot{SizeBytes: info.Size(), LastModified: info.ModTime().UTC().Format(time.RFC3339Nano)}
+	review, err := service.ReviewArchive([]string{filename}, true)
+	if err != nil || !review.Safe || !review.Catalog.BackupRequired {
+		t.Fatalf("expected archive cleanup review to pass: %+v %v", review, err)
+	}
+	response, err := service.Archive([]string{filename}, true)
+	if err != nil || response.Catalog.Removed != 1 || response.Catalog.BackupPath == "" {
+		t.Fatalf("expected archive cleanup to remove one row and retain backup: %+v %v", response, err)
+	}
+	database, err = sql.Open("sqlite", catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	var count int
+	if err := database.QueryRow("SELECT COUNT(*) FROM local_thread_catalog WHERE thread_id='01a01cc5-38a6-7431-bb4c-965672f007f6'").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("expected catalog row to be removed, got %d", count)
 	}
 }

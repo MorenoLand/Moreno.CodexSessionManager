@@ -33,6 +33,13 @@ export class ArchiveCheck {
              */
             this["name"] = "";
         }
+        if (!("threadId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["threadId"] = "";
+        }
         if (!("ok" in $$source)) {
             /**
              * @member
@@ -152,6 +159,13 @@ export class ArchiveResponse {
              */
             this["result"] = [];
         }
+        if (!("catalog" in $$source)) {
+            /**
+             * @member
+             * @type {{"requested": number, "removed": number, "ids": string[], "backupPath": string, "error": string}}
+             */
+            this["catalog"] = {"requested": 0, "removed": 0, "ids": [], "backupPath": "", "error": ""};
+        }
 
         Object.assign(this, $$source);
     }
@@ -163,9 +177,13 @@ export class ArchiveResponse {
      */
     static createFrom($$source = {}) {
         const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("result" in $$parsedSource) {
             $$parsedSource["result"] = $$createField0_0($$parsedSource["result"]);
+        }
+        if ("catalog" in $$parsedSource) {
+            $$parsedSource["catalog"] = $$createField1_0($$parsedSource["catalog"]);
         }
         return new ArchiveResponse(/** @type {Partial<ArchiveResponse>} */($$parsedSource));
     }
@@ -212,6 +230,13 @@ export class ArchiveReview {
              */
             this["files"] = [];
         }
+        if (!("catalog" in $$source)) {
+            /**
+             * @member
+             * @type {CatalogCheck}
+             */
+            this["catalog"] = (new CatalogCheck());
+        }
 
         Object.assign(this, $$source);
     }
@@ -222,10 +247,14 @@ export class ArchiveReview {
      * @returns {ArchiveReview}
      */
     static createFrom($$source = {}) {
-        const $$createField4_0 = $$createType3;
+        const $$createField4_0 = $$createType5;
+        const $$createField5_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("files" in $$parsedSource) {
             $$parsedSource["files"] = $$createField4_0($$parsedSource["files"]);
+        }
+        if ("catalog" in $$parsedSource) {
+            $$parsedSource["catalog"] = $$createField5_0($$parsedSource["catalog"]);
         }
         return new ArchiveReview(/** @type {Partial<ArchiveReview>} */($$parsedSource));
     }
@@ -289,7 +318,7 @@ export class CatalogCheck {
      * @returns {CatalogCheck}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType4;
+        const $$createField2_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("threadIds" in $$parsedSource) {
             $$parsedSource["threadIds"] = $$createField2_0($$parsedSource["threadIds"]);
@@ -335,7 +364,7 @@ export class CatalogMutation {
      * @returns {CatalogMutation}
      */
     static createFrom($$source = {}) {
-        const $$createField1_0 = $$createType4;
+        const $$createField1_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("ids" in $$parsedSource) {
             $$parsedSource["ids"] = $$createField1_0($$parsedSource["ids"]);
@@ -521,7 +550,7 @@ export class CatalogView {
      * @returns {CatalogView}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType6;
+        const $$createField3_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("rows" in $$parsedSource) {
             $$parsedSource["rows"] = $$createField3_0($$parsedSource["rows"]);
@@ -616,7 +645,7 @@ export class ContextPreview {
      * @returns {ContextPreview}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType8;
+        const $$createField2_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("messages" in $$parsedSource) {
             $$parsedSource["messages"] = $$createField2_0($$parsedSource["messages"]);
@@ -683,7 +712,7 @@ export class ContextSearch {
      * @returns {ContextSearch}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType8;
+        const $$createField2_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("matches" in $$parsedSource) {
             $$parsedSource["matches"] = $$createField2_0($$parsedSource["matches"]);
@@ -820,7 +849,7 @@ export class Diagnostics {
      * @returns {Diagnostics}
      */
     static createFrom($$source = {}) {
-        const $$createField15_0 = $$createType9;
+        const $$createField15_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("scan" in $$parsedSource) {
             $$parsedSource["scan"] = $$createField15_0($$parsedSource["scan"]);
@@ -950,8 +979,8 @@ export class Group {
      * @returns {Group}
      */
     static createFrom($$source = {}) {
-        const $$createField12_0 = $$createType4;
-        const $$createField14_0 = $$createType11;
+        const $$createField12_0 = $$createType2;
+        const $$createField14_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("agents" in $$parsedSource) {
             $$parsedSource["agents"] = $$createField12_0($$parsedSource["agents"]);
@@ -1119,8 +1148,8 @@ export class RecycleResponse {
      * @returns {RecycleResponse}
      */
     static createFrom($$source = {}) {
-        const $$createField0_0 = $$createType13;
-        const $$createField1_0 = $$createType14;
+        const $$createField0_0 = $$createType15;
+        const $$createField1_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("result" in $$parsedSource) {
             $$parsedSource["result"] = $$createField0_0($$parsedSource["result"]);
@@ -1176,8 +1205,8 @@ export class RecycleReview {
      * @returns {RecycleReview}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType16;
-        const $$createField3_0 = $$createType17;
+        const $$createField2_0 = $$createType17;
+        const $$createField3_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("files" in $$parsedSource) {
             $$parsedSource["files"] = $$createField2_0($$parsedSource["files"]);
@@ -1295,7 +1324,7 @@ export class ScanResult {
         const $$createField8_0 = $$createType20;
         const $$createField9_0 = $$createType22;
         const $$createField10_0 = $$createType22;
-        const $$createField11_0 = $$createType11;
+        const $$createField11_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
             $$parsedSource["stats"] = $$createField5_0($$parsedSource["stats"]);
@@ -1396,7 +1425,7 @@ export class ScanRoot {
     static createFrom($$source = {}) {
         const $$createField5_0 = $$createType18;
         const $$createField6_0 = $$createType22;
-        const $$createField7_0 = $$createType11;
+        const $$createField7_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
             $$parsedSource["stats"] = $$createField5_0($$parsedSource["stats"]);
@@ -1852,24 +1881,24 @@ export class TitleAlias {
 // Private type creation functions
 const $$createType0 = ArchiveItem.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = ArchiveCheck.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = $Create.Array($Create.Any);
-const $$createType5 = CatalogRow.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = ContextMessage.createFrom;
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = ScanStatus.createFrom;
-const $$createType10 = SessionFile.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = RecycleItem.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = $Create.Struct({
-    "ids": $$createType4,
+const $$createType2 = $Create.Array($Create.Any);
+const $$createType3 = $Create.Struct({
+    "ids": $$createType2,
 });
-const $$createType15 = RecycleCheck.createFrom;
-const $$createType16 = $Create.Array($$createType15);
-const $$createType17 = CatalogCheck.createFrom;
+const $$createType4 = ArchiveCheck.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = CatalogCheck.createFrom;
+const $$createType7 = CatalogRow.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = ContextMessage.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = ScanStatus.createFrom;
+const $$createType12 = SessionFile.createFrom;
+const $$createType13 = $Create.Array($$createType12);
+const $$createType14 = RecycleItem.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = RecycleCheck.createFrom;
+const $$createType17 = $Create.Array($$createType16);
 const $$createType18 = Stats.createFrom;
 const $$createType19 = ScanRoot.createFrom;
 const $$createType20 = $Create.Array($$createType19);

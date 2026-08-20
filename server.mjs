@@ -606,10 +606,10 @@ async function reviewRecycle(paths, removeCatalogRows) {
   return review;
 }
 
-async function reviewArchive(paths) {
+async function reviewArchive(paths, removeCatalogRows) {
   const unique = [...new Set(paths.map((filePath) => String(filePath).trim()).filter(Boolean))];
   if (!unique.length) throw new Error('No files selected');
-  const review = { safe: true, totalBytes: 0, archivedRoot: archivedRootDir, error: '', files: [] };
+  const review = { safe: true, totalBytes: 0, archivedRoot: archivedRootDir, error: '', files: [], catalog: { dbPath: catalogDbPath, available: false, threadIds: [], requested: 0, backupRequired: false, error: '' } };
   if (pathsOverlap(rootDir, archivedRootDir)) review.error = 'Current and archived session directories must not overlap.';
   if (!review.error) {
     try {
@@ -651,6 +651,18 @@ async function reviewArchive(paths) {
     else review.totalBytes += item.currentSizeBytes;
     review.files.push(item);
   }
+  review.catalog.threadIds = [...new Set(review.files.filter(item => item.ok).map(item => threadIdFromPath(item.path)).filter(Boolean))];
+  review.catalog.requested = review.catalog.threadIds.length;
+  if (removeCatalogRows && review.catalog.requested) {
+    review.catalog.backupRequired = true;
+    try {
+      await access(catalogDbPath);
+      review.catalog.available = true;
+    } catch {
+      review.catalog.error = 'Catalog DB is unavailable: ' + catalogDbPath;
+      review.safe = false;
+    }
+  }
   return review;
 }
 
@@ -661,7 +673,7 @@ function recycleReviewError(review) {
 
 function archiveReviewError(review) {
   const file = review.files.find((item) => !item.ok);
-  return file ? `Archive blocked for ${file.name}: ${file.error}` : review.error || 'Archive blocked by a safety check';
+  return file ? `Archive blocked for ${file.name}: ${file.error}` : review.catalog?.error || review.error || 'Archive blocked by a safety check';
 }
 
 function readBody(request) {
@@ -815,14 +827,30 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/archive/review') {
       const payload = JSON.parse(await readBody(request));
-      return sendJson(response, 200, await reviewArchive(Array.isArray(payload.paths) ? payload.paths : []));
+      return sendJson(response, 200, await reviewArchive(Array.isArray(payload.paths) ? payload.paths : [], payload.removeCatalogRows === true));
     }
     if (request.method === 'POST' && url.pathname === '/api/archive') {
       const payload = JSON.parse(await readBody(request));
       const paths = [...new Set(Array.isArray(payload.paths) ? payload.paths.map(String) : [])];
-      const review = await reviewArchive(paths);
+      const cleanup = payload.removeCatalogRows === true;
+      const review = await reviewArchive(paths, cleanup);
       if (!review.safe) return sendJson(response, 400, { error: archiveReviewError(review), review });
-      return sendJson(response, 200, { result: await archiveFiles(review.files.filter((item) => item.ok)) });
+      const backupPath = cleanup && review.catalog.backupRequired ? await backupCatalogDatabase() : '';
+      const result = await archiveFiles(review.files.filter((item) => item.ok));
+      const catalog = { requested: review.catalog.requested, removed: 0, ids: [], backupPath: '', error: '' };
+      if (cleanup) {
+        catalog.ids = [...new Set(result.filter(item => item.ok).map(item => threadIdFromPath(item.path)).filter(Boolean))];
+        if (catalog.ids.length) {
+          try {
+            const mutation = await removeCatalogRows(catalog.ids, backupPath);
+            catalog.removed = mutation.removed;
+            catalog.backupPath = mutation.backupPath || backupPath;
+          } catch (error) {
+            catalog.error = error.message;
+          }
+        }
+      }
+      return sendJson(response, 200, { result, catalog });
     }
     if (request.method === 'POST' && url.pathname === '/api/recycle') {
       const payload = JSON.parse(await readBody(request));
