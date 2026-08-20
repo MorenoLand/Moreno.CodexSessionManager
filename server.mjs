@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createReadStream, realpathSync } from 'node:fs';
-import { access, mkdir, readdir, stat } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import os from 'node:os';
@@ -14,15 +14,54 @@ try { ({ DatabaseSync: SqliteDatabaseSync } = await import('node:sqlite')); } ca
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.join(appDir, 'dist');
 const codexHome = path.resolve(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
-const rootDir = path.resolve(process.env.SESSION_SHELF_ROOT || path.join(codexHome, 'sessions'));
-const archivedRootDir = path.resolve(process.env.SESSION_SHELF_ARCHIVED_ROOT || path.join(codexHome, 'archived_sessions'));
+const defaultStorageConfig = {
+  currentRoot: path.resolve(process.env.SESSION_SHELF_ROOT || path.join(codexHome, 'sessions')),
+  archivedRoot: path.resolve(process.env.SESSION_SHELF_ARCHIVED_ROOT || path.join(codexHome, 'archived_sessions')),
+  catalogDb: path.resolve(process.env.CODEX_CATALOG_DB || path.join(codexHome, 'sqlite', 'codex-dev.db'))
+};
+const configDir = process.platform === 'win32' ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Session Shelf') : process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'Session Shelf') : path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'session-shelf');
+const settingsPath = path.join(configDir, 'settings.json');
+let rootDir = defaultStorageConfig.currentRoot;
+let archivedRootDir = defaultStorageConfig.archivedRoot;
+let catalogDbPath = defaultStorageConfig.catalogDb;
 const port = Number(process.env.PORT || 4310);
-const catalogDbPath = path.resolve(process.env.CODEX_CATALOG_DB || path.join(codexHome, 'sqlite', 'codex-dev.db'));
 const sqliteCommand = process.env.CODEX_SQLITE_COMMAND || (process.platform === 'win32' ? 'sqlite3.exe' : 'sqlite3');
-const sessionRoots = [
-  { key: 'current', label: 'Current sessions', path: rootDir, archived: false },
-  { key: 'archived', label: 'Archived sessions', path: archivedRootDir, archived: true }
-].filter((root, index, roots) => roots.findIndex(candidate => candidate.path.toLowerCase() === root.path.toLowerCase()) === index);
+let sessionRoots = [];
+
+function refreshSessionRoots() {
+  sessionRoots = [
+    { key: 'current', label: 'Current sessions', path: rootDir, archived: false },
+    { key: 'archived', label: 'Archived sessions', path: archivedRootDir, archived: true }
+  ].filter((root, index, roots) => roots.findIndex(candidate => candidate.path.toLowerCase() === root.path.toLowerCase()) === index);
+}
+
+function absoluteStoragePath(value, label) {
+  const text = String(value || '').trim();
+  if (!text || !path.isAbsolute(text)) throw new Error(`${label} must be an absolute path.`);
+  return path.resolve(text);
+}
+
+function getStorageSettings() {
+  return { currentRoot: rootDir, archivedRoot: archivedRootDir, catalogDb: catalogDbPath, settingsPath, defaults: defaultStorageConfig };
+}
+
+async function loadStorageSettings() {
+  try {
+    const stored = JSON.parse(await readFile(settingsPath, 'utf8'));
+    if (!process.env.SESSION_SHELF_ROOT && stored.currentRoot) rootDir = absoluteStoragePath(stored.currentRoot, 'Current sessions directory');
+    if (!process.env.SESSION_SHELF_ARCHIVED_ROOT && stored.archivedRoot) archivedRootDir = absoluteStoragePath(stored.archivedRoot, 'Archived sessions directory');
+    if (!process.env.CODEX_CATALOG_DB && stored.catalogDb) catalogDbPath = absoluteStoragePath(stored.catalogDb, 'Catalog DB path');
+  } catch {}
+  refreshSessionRoots();
+}
+
+async function saveStorageSettings() {
+  await mkdir(configDir, { recursive: true });
+  await writeFile(settingsPath, `${JSON.stringify({ currentRoot: rootDir, archivedRoot: archivedRootDir, catalogDb: catalogDbPath }, null, 2)}\n`, 'utf8');
+}
+
+refreshSessionRoots();
+await loadStorageSettings();
 
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -496,6 +535,35 @@ let viteServer = null;
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://${request.headers.host || '127.0.0.1'}`);
+    if (request.method === 'GET' && url.pathname === '/api/settings') return sendJson(response, 200, getStorageSettings());
+    if (request.method === 'POST' && url.pathname === '/api/settings') {
+      const payload = JSON.parse(await readBody(request));
+      let next;
+      try {
+        next = {
+          currentRoot: absoluteStoragePath(payload.currentRoot, 'Current sessions directory'),
+          archivedRoot: absoluteStoragePath(payload.archivedRoot, 'Archived sessions directory'),
+          catalogDb: absoluteStoragePath(payload.catalogDb, 'Catalog DB path')
+        };
+      } catch (error) {
+        return sendJson(response, 400, { error: error.message });
+      }
+      const previous = { currentRoot: rootDir, archivedRoot: archivedRootDir, catalogDb: catalogDbPath };
+      try {
+        rootDir = next.currentRoot;
+        archivedRootDir = next.archivedRoot;
+        catalogDbPath = next.catalogDb;
+        refreshSessionRoots();
+        await saveStorageSettings();
+        return sendJson(response, 200, { settings: getStorageSettings() });
+      } catch (error) {
+        rootDir = previous.currentRoot;
+        archivedRootDir = previous.archivedRoot;
+        catalogDbPath = previous.catalogDb;
+        refreshSessionRoots();
+        return sendJson(response, 500, { error: error.message });
+      }
+    }
     if (request.method === 'GET' && url.pathname === '/api/scan') return sendJson(response, 200, await scanSessions(url.searchParams.get('includeArchived') !== '0'));
     if (request.method === 'GET' && url.pathname === '/api/health') return sendJson(response, 200, { ok: true });
     if (request.method === 'GET' && url.pathname === '/api/catalog') return sendJson(response, 200, await getCatalogView());

@@ -6,3 +6,28 @@
 .root-sort:hover{color:#78aaff}
 .root-sort span{color:#6f8db9;font-size:10px}
 @media (max-width:900px){.list-head .root-sort:last-child{display:none}}
+ .storage-status{margin-top:7px;color:#8ea0bc;font-size:11px}
+.filter-wrap{position:relative;flex:0 0 auto}
+.filter-popover{position:absolute;z-index:15;top:45px;right:0;width:280px;padding:14px;border:1px solid #3a5276;border-radius:5px;background:#101d32;box-shadow:0 18px 45px rgba(0,0,0,.35)}
+.filter-controls{display:grid;gap:14px;max-width:640px}
+.filter-controls.compact{gap:10px}
+.filter-field{display:grid;gap:6px;color:#9eb0c8;font-size:11px}
+.filter-field input,.filter-field select{height:35px;padding:0 9px;border:1px solid #354b6b;border-radius:4px;outline:0;background:#0b1628;color:#e8f0fc;font-size:12px}
+.filter-field input:focus,.filter-field select:focus,.settings-input:focus{border-color:#5b9bff;box-shadow:0 0 0 2px #1b3c6b}
+.filter-check{display:flex;align-items:center;gap:8px;color:#c0cee0;font-size:12px}
+.filter-check input,.setting-row input[type=checkbox]{width:16px;height:16px;accent-color:#4f8cff}
+.filter-controls>.button{height:35px}
+.settings-card{max-width:720px;padding:18px;border:1px solid #2d4260;border-radius:6px;background:#0d192c}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 0;color:#dce7f6}
+.setting-row+.setting-row{border-top:1px solid #243650}
+.setting-row span{display:grid;gap:5px}
+.setting-row strong{font-size:13px;font-weight:650}
+.setting-row small{color:#8498b4;font-size:11px;line-height:1.45}
+.setting-row select{height:34px;padding:0 9px;border:1px solid #354b6b;border-radius:4px;background:#0b1628;color:#e8f0fc}
+.settings-note{display:flex;align-items:flex-start;gap:8px;max-width:720px;margin-top:14px;color:#8195b1;font-size:11px;line-height:1.5}
+.settings-note .icon{flex:0 0 auto;color:#7fa7e9}
+.location-card{display:grid;gap:16px}
+.settings-field{display:grid;gap:7px;color:#aebed3;font-size:11px}
+.settings-input{width:100%;height:38px;padding:0 10px;border:1px solid #354b6b;border-radius:4px;outline:0;background:#0b1628;color:#e8f0fc;font:12px ui-monospace,SFMono-Regular,Consolas,monospace}
+.settings-actions{display:flex;justify-content:flex-end;gap:9px;padding-top:3px}
+.settings-success{display:flex;align-items:center;gap:8px;max-width:720px;margin-bottom:12px;padding:9px 12px;border:1px solid #326c52;border-radius:4px;background:#10271e;color:#b8f1ce;font-size:12px}

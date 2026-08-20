@@ -43,6 +43,8 @@ By default the server resolves the current user’s Codex home directory and sca
 
 The archive directory is optional. A missing archive directory is shown as empty rather than treated as a scan failure.
 
+The **Storage locations** page can change these paths and save them to the operating system’s per-user application configuration directory. Saving applies the paths to scanning, previews, reveal/trash validation, and Catalog DB reads, then rescans. Path-specific environment variables take precedence when supplied at process startup.
+
 Override locations per process when the Codex installation uses a different layout:
 
 | Variable | Purpose |
@@ -54,6 +56,13 @@ Override locations per process when the Codex installation uses a different layo
 | `CODEX_SQLITE_COMMAND` | SQLite CLI fallback command |
 | `PORT` | HTTP port, default `4310` |
 | `SESSION_SHELF_DEV` | Set to `0` to serve `dist` instead of Vite |
+
+## In-app controls
+
+- **Preferences** controls whether archived sessions are included in scans and how many preview messages are loaded when a session is selected.
+- **Filters** applies minimum size, minimum file count, agent, and fork-only filters to both session tables.
+- **Storage locations** edits the absolute current-session, archived-session, and Catalog DB paths and saves them persistently.
+- Global chrome does not display full filesystem paths; those remain available on the Storage locations page.
 
 ## Safety model
 

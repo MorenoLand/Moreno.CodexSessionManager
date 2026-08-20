@@ -53,20 +53,34 @@ function promptPreview(value) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > 280 ? text.slice(0, 277).trimEnd() + '…' : text;
 }
+const defaultPreferences = { includeArchived: true, previewLimit: 6 };
+const defaultFilters = { minGiB: '', minFiles: '', agent: 'all', forkedOnly: false };
+function loadPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('session-shelf.preferences') || '{}');
+    const previewLimit = Math.min(8, Math.max(1, Number(saved.previewLimit) || defaultPreferences.previewLimit));
+    return { includeArchived: saved.includeArchived !== false, previewLimit };
+  } catch { return defaultPreferences; }
+}
+function FilterControls({ filters, setFilters, agents, compact = false }) {
+  const update = (key, value) => setFilters(current => ({ ...current, [key]: value }));
+  return <div className={'filter-controls ' + (compact ? 'compact' : '')}><label className="filter-field"><span>Minimum size (GiB)</span><input type="number" min="0" step="0.1" value={filters.minGiB} onChange={event => update('minGiB', event.target.value)} placeholder="Any size" /></label><label className="filter-field"><span>Minimum files</span><input type="number" min="1" step="1" value={filters.minFiles} onChange={event => update('minFiles', event.target.value)} placeholder="Any count" /></label><label className="filter-field"><span>Agent</span><select value={filters.agent} onChange={event => update('agent', event.target.value)}><option value="all">All agents</option><option value="root">Root / unnamed</option>{agents.map(agent => <option key={agent} value={agent}>{agent}</option>)}</select></label><label className="filter-check"><input type="checkbox" checked={filters.forkedOnly} onChange={event => update('forkedOnly', event.target.checked)} /><span>Forked sessions only</span></label><button className="button" onClick={() => setFilters(defaultFilters)}>Clear filters</button></div>;
+}
 
-function Sidebar({ view, setView, onScan, queueCount, sessionRoot, archivedRoot }) {
+function Sidebar({ view, setView, onScan, queueCount }) {
   const primary = [['overview', 'Overview', 'home'], ['roots', 'Active sessions', 'branch'], ['archived', 'Archived sessions', 'archive'], ['all', 'All files', 'file'], ['catalog', 'Catalog DB', 'database']];
   const settings = [['locations', 'Storage locations', 'folder'], ['filters', 'Filters', 'filter'], ['preferences', 'Preferences', 'settings']];
-  return <aside className="sidebar"><div className="brand"><span className="brand-mark"><Icon name="archive" size={19} /></span><span>Session Shelf</span></div><div className="side-scroll"><nav className="side-nav">{primary.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav><div className="nav-heading">Actions</div><nav className="side-nav"><button className="nav-item" onClick={onScan}><Icon name="refresh" /><span>Scan sessions</span></button><button className={'nav-item ' + (view === 'queue' ? 'active' : '')} onClick={() => setView('queue')}><Icon name="archive" /><span>Review queue</span>{queueCount > 0 && <span className="nav-count">{queueCount}</span>}</button><button className={'nav-item ' + (view === 'recycle' ? 'active' : '')} onClick={() => setView('recycle')}><Icon name="trash" /><span>Recycle Bin</span></button></nav><div className="nav-heading">Settings</div><nav className="side-nav">{settings.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav></div><div className="storage-card"><div className="storage-label"><span className="status-dot" />Current sessions</div><div className="storage-path" title={sessionRoot}>{sessionRoot || 'Detecting session directory...'}</div><div className="storage-label"><span className="status-dot" />Archived sessions</div><div className="storage-path" title={archivedRoot}>{archivedRoot || 'Detecting archive directory...'}</div><div className="storage-meta">Local scan only</div></div></aside>;
+  return <aside className="sidebar"><div className="brand"><span className="brand-mark"><Icon name="archive" size={19} /></span><span>Session Shelf</span></div><div className="side-scroll"><nav className="side-nav">{primary.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav><div className="nav-heading">Actions</div><nav className="side-nav"><button className="nav-item" onClick={onScan}><Icon name="refresh" /><span>Scan sessions</span></button><button className={'nav-item ' + (view === 'queue' ? 'active' : '')} onClick={() => setView('queue')}><Icon name="archive" /><span>Review queue</span>{queueCount > 0 && <span className="nav-count">{queueCount}</span>}</button><button className={'nav-item ' + (view === 'recycle' ? 'active' : '')} onClick={() => setView('recycle')}><Icon name="trash" /><span>Recycle Bin</span></button></nav><div className="nav-heading">Settings</div><nav className="side-nav">{settings.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav></div></aside>;
 }
 function Header({ data, onScan, scanning, view }) {
   const labels = { overview: 'Overview', roots: 'Active sessions', archived: 'Archived sessions', all: 'All files', catalog: 'Catalog DB', queue: 'Review queue', recycle: 'Recycle Bin', locations: 'Storage locations', filters: 'Filters', preferences: 'Preferences' };
-  const icon = view === 'roots' ? 'folder' : view === 'all' ? 'file' : view === 'catalog' ? 'database' : view === 'recycle' ? 'trash' : 'archive';
+  const icon = view === 'roots' ? 'folder' : view === 'all' ? 'file' : view === 'catalog' ? 'database' : view === 'recycle' ? 'trash' : view === 'locations' ? 'folder' : view === 'filters' ? 'filter' : view === 'preferences' ? 'settings' : 'archive';
   return <header className="topbar"><div className="topbar-title"><Icon name={icon} size={23} /><span>{labels[view] || 'Session Shelf'}</span></div><div className="topbar-stats"><div className="stat-emphasis"><Icon name="database" size={22} /><strong>{data ? formatGiB(data.stats.totalBytes) : '—'}</strong></div><span>{data ? data.stats.fileCount + ' files' : 'Scanning'}</span></div><div className="topbar-actions"><Button icon="refresh" onClick={onScan} disabled={scanning}>{scanning ? 'Scanning...' : 'Scan sessions'}</Button><span className={'scan-state ' + (scanning ? 'scanning' : '')}><Icon name={scanning ? 'refresh' : 'check'} size={16} />{scanning ? 'Reading JSONL metadata' : data ? 'Scanned ' + formatDate(data.scannedAt) : 'Waiting'}</span><Icon name="settings" size={20} /></div></header>;
 }
-function SearchTools({ query, setQuery, sort, setSort }) {
+function SearchTools({ query, setQuery, sort, setSort, filters, setFilters, agents }) {
   const sortKey = typeof sort === 'string' ? sort === 'name' ? 'title' : sort === 'recent' ? 'lastActivity' : sort === 'files' ? 'fileCount' : 'sizeBytes' : sort.key;
-  return <div className="tools-row"><label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search sessions..." /><kbd>Ctrl K</kbd></label><button className="icon-button" title="Filters"><Icon name="filter" size={18} /></button><label className="sort-select"><span>Sort by</span><select value={sortKey} onChange={event => setSort({ key: event.target.value, direction: event.target.value === 'title' ? 'asc' : 'desc' })}><option value="sizeBytes">reclaimable size</option><option value="lastActivity">last activity</option><option value="fileCount">file count</option><option value="title">name</option></select><Icon name="chevron" size={15} /></label></div>;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  return <div className="tools-row"><label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search sessions..." /><kbd>Ctrl K</kbd></label><div className="filter-wrap"><button className="icon-button" title="Filters" aria-label="Filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(open => !open)}><Icon name="filter" size={18} /></button>{filtersOpen && <div className="filter-popover"><FilterControls filters={filters} setFilters={setFilters} agents={agents} compact /></div>}</div><label className="sort-select"><span>Sort by</span><select value={sortKey} onChange={event => setSort({ key: event.target.value, direction: event.target.value === 'title' ? 'asc' : 'desc' })}><option value="sizeBytes">reclaimable size</option><option value="lastActivity">last activity</option><option value="fileCount">file count</option><option value="title">name</option></select><Icon name="chevron" size={15} /></label></div>;
 }
 function AgentBadge({ agent }) {
   const name = String(agent || '').trim();
@@ -77,11 +91,11 @@ function RootRow({ group, selected, selectedPaths, onSelect }) {
   const checked = group.files.length > 0 && group.files.every(file => selectedPaths.has(file.path));
   return <button className={'root-row ' + (selected ? 'selected' : '')} onClick={onSelect}><span className="root-row-check" onClick={event => event.stopPropagation()}><input type="checkbox" checked={checked} onChange={() => onSelect('toggle')} aria-label={'Select all files in ' + group.title} /></span><span className="root-icon"><Icon name="branch" size={19} /></span><span className="root-copy"><strong>{group.title}</strong><small>{shortId(group.rootId)}</small></span><span className="root-files">{group.fileCount}</span><span className="root-size">{formatGiB(group.sizeBytes)}</span><span className="root-date">{formatDate(group.lastActivity)}</span></button>;
 }
-function RootList({ groups, selectedGroup, selectedPaths, setSelectedGroup, toggleGroup, query, setQuery, sort, setSort, archived }) {
+function RootList({ groups, selectedGroup, selectedPaths, setSelectedGroup, toggleGroup, query, setQuery, sort, setSort, archived, filters, setFilters, agents }) {
   const currentSort = typeof sort === 'string' ? { key: sort === 'name' ? 'title' : sort === 'recent' ? 'lastActivity' : sort === 'files' ? 'fileCount' : 'sizeBytes', direction: 'desc' } : sort;
   const toggleSort = key => setSort(current => { const next = typeof current === 'string' ? { key: current === 'name' ? 'title' : current === 'recent' ? 'lastActivity' : current === 'files' ? 'fileCount' : 'sizeBytes', direction: 'desc' } : current; return next.key === key ? { ...next, direction: next.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: key === 'title' ? 'asc' : 'desc' }; });
   const sortHeader = (key, label) => <button className="root-sort" aria-label={'Sort by ' + label} aria-sort={currentSort.key === key ? currentSort.direction === 'asc' ? 'ascending' : 'descending' : 'none'} onClick={() => toggleSort(key)}>{label}<span>{currentSort.key === key ? currentSort.direction === 'asc' ? '▲' : '▼' : '↕'}</span></button>;
-  return <section className="center-pane"><SearchTools query={query} setQuery={setQuery} sort={sort} setSort={setSort} /><div className="list-head">{sortHeader('title', archived ? 'Archived session' : 'Active session')}{sortHeader('fileCount', 'Files')}{sortHeader('sizeBytes', 'Reclaimable size')}{sortHeader('lastActivity', 'Last activity')}</div><div className="root-list">{groups.length ? groups.map(group => <RootRow key={group.key || group.rootId} group={group} selected={(selectedGroup?.key || selectedGroup?.rootId) === (group.key || group.rootId)} selectedPaths={selectedPaths} onSelect={mode => mode === 'toggle' ? (setSelectedGroup(group), toggleGroup(group)) : setSelectedGroup(group)} />) : <EmptyState title="No matching sessions" detail="Try a different search or scan the directory again." />}</div><div className="list-footer"><span>{groups.length} visible sessions</span><span>Selected: {selectedPaths.size} files</span></div></section>;
+  return <section className="center-pane"><SearchTools query={query} setQuery={setQuery} sort={sort} setSort={setSort} filters={filters} setFilters={setFilters} agents={agents} /><div className="list-head">{sortHeader('title', archived ? 'Archived session' : 'Active session')}{sortHeader('fileCount', 'Files')}{sortHeader('sizeBytes', 'Reclaimable size')}{sortHeader('lastActivity', 'Last activity')}</div><div className="root-list">{groups.length ? groups.map(group => <RootRow key={group.key || group.rootId} group={group} selected={(selectedGroup?.key || selectedGroup?.rootId) === (group.key || group.rootId)} selectedPaths={selectedPaths} onSelect={mode => mode === 'toggle' ? (setSelectedGroup(group), toggleGroup(group)) : setSelectedGroup(group)} />) : <EmptyState title="No matching sessions" detail="Try a different search or scan the directory again." />}</div><div className="list-footer"><span>{groups.length} visible sessions</span><span>Selected: {selectedPaths.size} files</span></div></section>;
 }
 function FileTable({ files, selectedPaths, toggleFile, reveal }) {
   return <div className="file-table"><div className="file-table-head"><span /><span>Agent</span><span>File name</span><span>Size</span><span>Last modified</span><span /></div>{files.map(file => <div className={'file-row ' + (selectedPaths.has(file.path) ? 'selected' : '')} key={file.path}><input type="checkbox" checked={selectedPaths.has(file.path)} onChange={() => toggleFile(file.path)} aria-label={'Select ' + file.name} /><AgentBadge agent={file.agent} /><button className="file-name" onClick={() => reveal(file.path)} title={file.path}><Icon name="file" size={15} /><span>{file.name}</span></button><span>{formatBytes(file.sizeBytes)}</span><span>{formatDate(file.lastModified)}</span><button className="reveal-button" title="Show in Explorer" onClick={() => reveal(file.path)}><Icon name="folder" size={15} /></button></div>)}</div>;
@@ -91,7 +105,7 @@ function ContextPreview({ group, context, loading, error, loadContext }) {
   const messages = active ? context.messages : [];
   return <section className="context-preview"><div className="context-window-bar"><div className="context-window-ident"><span className="context-window-icon"><Icon name="message" size={15} /></span><div><strong>{group.title}</strong><span>{shortId(group.rootId)} · stored transcript</span></div></div><button className="context-action" onClick={() => loadContext(group.rootPath)} disabled={loading}><Icon name="message" size={15} />{loading && active ? 'Reading...' : active ? 'Refresh' : 'Preview messages'}</button></div>{loading && active ? <div className="context-state">Reading the first messages...</div> : error && active ? <div className="context-state context-error">{error}</div> : active && messages.length ? <div className="context-thread">{messages.map((message, index) => <article className={'context-message ' + message.role} key={message.role + '-' + index}><div className="context-message-meta"><span className={'context-avatar ' + message.role}>{message.role === 'user' ? 'Y' : 'C'}</span><strong>{message.role === 'user' ? 'You' : 'Codex'}</strong><span className="context-message-index">{index + 1}/{messages.length}</span></div><div className="context-bubble"><p>{message.text}</p></div></article>)}</div> : active ? <div className="context-state">No user or assistant messages were found in the preview window.</div> : <div className="context-state">Load a small preview before deciding whether this root is worth keeping.</div>}{active && !loading && messages.length > 0 && <div className="context-note">{context.limited ? 'Showing the first ' + messages.length + ' messages; the transcript stays untouched.' : 'Reached the end of this transcript preview.'}</div>}</section>;
 }
-function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGroup, review, reveal }) {
+function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGroup, review, reveal, previewLimit }) {
   const [context, setContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState('');
@@ -100,7 +114,7 @@ function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGrou
     setContextError('');
     setContextLoading(true);
     try {
-      const response = await fetch('/api/context?path=' + encodeURIComponent(filePath) + '&limit=6');
+      const response = await fetch('/api/context?path=' + encodeURIComponent(filePath) + '&limit=' + previewLimit);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Context preview failed');
       setContext(result);
@@ -109,8 +123,8 @@ function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGrou
     } finally {
       setContextLoading(false);
     }
-  }, []);
-  useEffect(() => { if (group?.rootPath) loadContext(group.rootPath); }, [group?.rootPath, loadContext]);
+  }, [previewLimit]);
+  useEffect(() => { if (group?.rootPath) loadContext(group.rootPath); }, [group?.rootPath, previewLimit, loadContext]);
   if (!group) return <aside className="inspector empty-inspector"><div className="empty-illustration"><Icon name="branch" size={30} /></div><h2>Choose a conversation root</h2><p>Select a group to see its forked files, lineage, and reclaimable space.</p></aside>;
   const selectedInGroup = group.files.filter(file => selectedPaths.has(file.path)).length;
   return <aside className="inspector"><div className="inspector-top"><div><h1>{group.title}</h1><p className="inspector-size">{formatGiB(group.sizeBytes)} <span>reclaimable</span></p></div><span className="file-count"><strong>{group.fileCount}</strong><small>files</small></span></div><Button variant="primary" icon="archive" onClick={review} disabled={!selectedInGroup || kept}>Review {selectedInGroup || group.fileCount} files</Button><div className="detail-block"><div className="detail-row"><span>Root thread</span><strong className="copyable" title={group.rootId}>{shortId(group.rootId)} <Icon name="copy" size={14} /></strong></div><div className="detail-row"><span>Codex title</span><strong>{group.title}</strong></div><div className="detail-row"><span>First request</span><strong className="detail-prompt" title={group.prompt}>{promptPreview(group.prompt) || 'No user prompt found'}</strong></div><div className="detail-row"><span>Forked agents</span><div className="agent-list">{group.agents.length ? group.agents.map(agent => <span className="agent-chip" key={agent}><i />{agent}</span>) : <span className="muted">No named agents</span>}</div></div><div className="detail-row"><span>Last activity</span><strong>{formatDate(group.lastActivity)}</strong></div><div className="detail-row"><span>File count</span><strong>{group.fileCount} JSONL files</strong></div><div className="detail-row"><span>Location</span><strong className="path-text" title={group.cwd}>{group.cwd || 'Unknown'}</strong></div></div><ContextPreview group={group} context={context} loading={contextLoading} error={contextError} loadContext={loadContext} /><div className="forked-heading"><h2>Forked files <span>({group.fileCount})</span></h2><label><input type="checkbox" checked={selectedInGroup === group.fileCount} onChange={() => toggleGroup(group)} /> Select all</label></div><FileTable files={group.files} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /><div className="safe-zone"><div className="review-box"><Icon name={kept ? 'check' : 'unlock'} size={20} /><div><strong>{kept ? 'Conversation kept' : 'Review required'}</strong><span>{kept ? 'This root is excluded from the review queue.' : 'Review the selected files before they can move to the Recycle Bin.'}</span></div></div><label className="keep-toggle"><input type="checkbox" checked={kept} onChange={event => setKept(event.target.checked)} /><span><strong>Keep this conversation</strong><small>Exclude from deletion</small></span></label><Button variant="danger" icon="trash" onClick={review} disabled={!selectedInGroup || kept}>Move selected to Recycle Bin</Button><div className="selection-foot"><span>{selectedInGroup} of {group.fileCount} files selected</span><span>{formatBytes(group.files.filter(file => selectedPaths.has(file.path)).reduce((sum, file) => sum + file.sizeBytes, 0))}</span></div></div></aside>;
@@ -175,8 +189,35 @@ function Overview({ data }) {
 function RecycleView() {
   return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Recycle Bin</h1><p>Session Shelf sends selected JSONL files to the operating system trash.</p></div></div><div className="empty-state"><Icon name="trash" size={28} /><h2>Nothing to review here</h2><p>Use Active sessions or Archived sessions to inspect files before moving them. Recovery remains available through the operating system trash.</p></div></section>;
 }
-function SettingsView({ title }) {
-  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>{title}</h1><p>This local-only view is reserved for Session Shelf configuration.</p></div></div><div className="empty-state"><Icon name="settings" size={28} /><h2>No changes required</h2><p>The current session directory and safety rules are active.</p></div></section>;
+function PreferencesView({ preferences, updatePreferences }) {
+  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Preferences</h1><p>Real settings for scan scope and transcript previews. Changes are saved in this browser.</p></div><span>Saved locally</span></div><div className="settings-card"><label className="setting-row"><span><strong>Scan archived sessions</strong><small>Include the configured archive directory in every scan.</small></span><input type="checkbox" checked={preferences.includeArchived} onChange={event => updatePreferences({ includeArchived: event.target.checked })} /></label><label className="setting-row"><span><strong>Preview message count</strong><small>Number of user/assistant messages loaded when a session opens.</small></span><select value={preferences.previewLimit} onChange={event => updatePreferences({ previewLimit: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 6, 7, 8].map(value => <option key={value} value={value}>{value} messages</option>)}</select></label></div><div className="settings-note"><Icon name="info" size={16} /><span>Transcript previews stay read-only and are capped at eight messages.</span></div></section>;
+}
+function FiltersView({ filters, setFilters, agents }) {
+  const activeCount = [filters.minGiB, filters.minFiles, filters.agent !== 'all' ? filters.agent : '', filters.forkedOnly ? 'forked' : ''].filter(Boolean).length;
+  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Filters</h1><p>These filters apply to both Active sessions and Archived sessions.</p></div><span>{activeCount ? activeCount + ' active' : 'No filters'}</span></div><div className="settings-card"><FilterControls filters={filters} setFilters={setFilters} agents={agents} /></div><div className="settings-note"><Icon name="filter" size={16} /><span>Search text and filters combine; sorting still comes from the table headers or the sort menu.</span></div></section>;
+}
+function StorageLocationsView({ onSaved }) {
+  const [settings, setSettings] = useState(null);
+  const [defaults, setDefaults] = useState(null);
+  const [form, setForm] = useState({ currentRoot: '', archivedRoot: '', catalogDb: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  useEffect(() => { fetch('/api/settings').then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Settings load failed'); setSettings(result); setDefaults(result.defaults); setForm({ currentRoot: result.currentRoot, archivedRoot: result.archivedRoot, catalogDb: result.catalogDb }); }).catch(loadError => setError(loadError.message)); }, []);
+  function update(key, value) { setForm(current => ({ ...current, [key]: value })); setNotice(''); }
+  async function save() {
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Settings save failed');
+      setSettings(result.settings); setForm({ currentRoot: result.settings.currentRoot, archivedRoot: result.settings.archivedRoot, catalogDb: result.settings.catalogDb });
+      await onSaved();
+      setNotice('Saved locations and rescanned sessions.');
+    } catch (saveError) { setError(saveError.message); } finally { setBusy(false); }
+  }
+  if (!settings) return <section className="center-pane full-pane"><div className="empty-state">{error ? <><Icon name="info" size={28} /><h2>Storage settings unavailable</h2><p>{error}</p></> : <><Icon name="folder" size={28} /><h2>Loading storage settings...</h2></>}</div></section>;
+  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Storage locations</h1><p>These absolute paths control what the server scans and which Catalog DB it reads.</p></div><span>Config: {settings.settingsPath}</span></div>{error && <div className="error-banner">{error}</div>}{notice && <div className="settings-success"><Icon name="check" size={16} />{notice}</div>}<div className="settings-card location-card"><label className="settings-field"><span>Current sessions directory</span><input className="settings-input" value={form.currentRoot} onChange={event => update('currentRoot', event.target.value)} spellCheck="false" /></label><label className="settings-field"><span>Archived sessions directory</span><input className="settings-input" value={form.archivedRoot} onChange={event => update('archivedRoot', event.target.value)} spellCheck="false" /></label><label className="settings-field"><span>Catalog DB path</span><input className="settings-input" value={form.catalogDb} onChange={event => update('catalogDb', event.target.value)} spellCheck="false" /></label><div className="settings-actions"><Button onClick={() => setForm({ currentRoot: defaults.currentRoot, archivedRoot: defaults.archivedRoot, catalogDb: defaults.catalogDb })} disabled={busy}>Reset defaults</Button><Button variant="primary" icon="check" onClick={save} disabled={busy}>{busy ? 'Saving and scanning...' : 'Save & rescan'}</Button></div></div></section>;
 }
 function EmptyState({ title, detail }) {
   return <div className="empty-state"><Icon name="archive" size={28} /><h2>{title}</h2><p>{detail}</p></div>;
@@ -201,11 +242,14 @@ function App() {
   const [rootQuery, setRootQuery] = useState('');
   const [rootSort, setRootSort] = useState({ key: 'sizeBytes', direction: 'desc' });
   const [allQuery, setAllQuery] = useState('');
+  const [preferences, setPreferences] = useState(loadPreferences);
+  const [filters, setFilters] = useState(defaultFilters);
   const setView = useCallback(nextView => { setViewState(nextView); localStorage.setItem('session-shelf.view', nextView); }, []);
+  const updatePreferences = useCallback(patch => { setPreferences(current => { const next = { ...current, ...patch }; localStorage.setItem('session-shelf.preferences', JSON.stringify(next)); return next; }); }, []);
   const scan = useCallback(async () => {
     setScanning(true);
     try {
-      const response = await fetch('/api/scan?includeArchived=1');
+      const response = await fetch('/api/scan?includeArchived=' + (preferences.includeArchived ? '1' : '0'));
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Session scan failed');
       setData(result);
@@ -215,20 +259,23 @@ function App() {
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [preferences.includeArchived]);
   useEffect(() => { scan(); }, [scan]);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(''), 5000); return () => clearTimeout(timer); }, [toast]);
   const activeArchived = view === 'archived';
   const activeGroups = activeArchived ? (data?.archivedGroups || []) : (data?.groups || []);
+  const availableAgents = useMemo(() => [...new Set([...(data?.groups || []), ...(data?.archivedGroups || [])].flatMap(group => group.agents || []))].sort((left, right) => left.localeCompare(right)), [data]);
   const selectedGroup = activeGroups.find(group => (group.key || group.rootId) === selectedRootKey) || activeGroups[0];
   const selectedFiles = useMemo(() => data?.files.filter(file => selectedPaths.has(file.path)) || [], [data, selectedPaths]);
   const visibleGroups = useMemo(() => {
     const lower = rootQuery.toLowerCase();
-    const filtered = activeGroups.filter(group => (group.title + ' ' + group.prompt + ' ' + group.cwd + ' ' + group.rootId).toLowerCase().includes(lower));
+    const minimumBytes = Math.max(0, Number(filters.minGiB) || 0) * 1024 ** 3;
+    const minimumFiles = Math.max(0, Number(filters.minFiles) || 0);
+    const filtered = activeGroups.filter(group => (group.title + ' ' + group.prompt + ' ' + group.cwd + ' ' + group.rootId).toLowerCase().includes(lower) && group.sizeBytes >= minimumBytes && group.fileCount >= minimumFiles && (filters.agent === 'all' || (filters.agent === 'root' ? !group.agents.length : group.agents.includes(filters.agent))) && (!filters.forkedOnly || group.fileCount > 1));
     const sortKey = typeof rootSort === 'string' ? rootSort === 'name' ? 'title' : rootSort === 'recent' ? 'lastActivity' : rootSort === 'files' ? 'fileCount' : 'sizeBytes' : rootSort.key;
     const direction = (typeof rootSort === 'string' ? 'desc' : rootSort.direction) === 'asc' ? 1 : -1;
     return filtered.sort((a, b) => { const result = sortKey === 'title' ? a.title.localeCompare(b.title) : sortKey === 'fileCount' ? a.fileCount - b.fileCount : sortKey === 'lastActivity' ? new Date(a.lastActivity) - new Date(b.lastActivity) : a.sizeBytes - b.sizeBytes; return result * direction; });
-  }, [activeGroups, rootQuery, rootSort]);
+  }, [activeGroups, rootQuery, rootSort, filters]);
   function toggleFile(filePath) {
     setSelectedPaths(current => { const next = new Set(current); if (next.has(filePath)) next.delete(filePath); else next.add(filePath); return next; });
   }
@@ -265,15 +312,17 @@ function App() {
       setMoving(false);
     }
   }
-  const rootView = <><RootList groups={visibleGroups} selectedGroup={selectedGroup} selectedPaths={selectedPaths} setSelectedGroup={group => setSelectedRootKey(group.key || group.rootId)} toggleGroup={toggleGroup} query={rootQuery} setQuery={setRootQuery} sort={rootSort} setSort={setRootSort} archived={activeArchived} /><Inspector group={selectedGroup} selectedPaths={selectedPaths} kept={selectedGroup ? keptRoots.has(selectedGroup.key || selectedGroup.rootId) : false} setKept={setKept} toggleFile={toggleFile} toggleGroup={toggleGroup} review={review} reveal={reveal} /></>;
+  const rootView = <><RootList groups={visibleGroups} selectedGroup={selectedGroup} selectedPaths={selectedPaths} setSelectedGroup={group => setSelectedRootKey(group.key || group.rootId)} toggleGroup={toggleGroup} query={rootQuery} setQuery={setRootQuery} sort={rootSort} setSort={setRootSort} archived={activeArchived} filters={filters} setFilters={setFilters} agents={availableAgents} /><Inspector group={selectedGroup} selectedPaths={selectedPaths} kept={selectedGroup ? keptRoots.has(selectedGroup.key || selectedGroup.rootId) : false} setKept={setKept} toggleFile={toggleFile} toggleGroup={toggleGroup} review={review} reveal={reveal} previewLimit={preferences.previewLimit} /></>;
   let content = rootView;
   if (view === 'overview') content = <Overview data={data} />;
   if (view === 'all') content = <AllFilesView files={data?.files || []} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} query={allQuery} setQuery={setAllQuery} />;
   if (view === 'catalog') content = <CatalogView />;
   if (view === 'queue') content = <QueueView files={data?.files || []} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} onReview={review} />;
   if (view === 'recycle') content = <RecycleView />;
-  if (['locations', 'filters', 'preferences'].includes(view)) content = <SettingsView title={view === 'locations' ? 'Storage locations' : view[0].toUpperCase() + view.slice(1)} />;
+  if (view === 'locations') content = <StorageLocationsView onSaved={scan} />;
+  if (view === 'filters') content = <FiltersView filters={filters} setFilters={setFilters} agents={availableAgents} />;
+  if (view === 'preferences') content = <PreferencesView preferences={preferences} updatePreferences={updatePreferences} />;
   const browsingRoots = view === 'roots' || view === 'archived';
-  return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} sessionRoot={data?.root} archivedRoot={data?.archivedRoot} /><div className="main-shell"><Header data={data} onScan={scan} scanning={scanning} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' roots / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span><span className="status-path">{data?.root || 'Detecting session directory...'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} onClose={() => { setReviewFiles(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} removeCatalogRows={removeCatalogRows} setRemoveCatalogRows={setRemoveCatalogRows} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
+  return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} scanning={scanning} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} onClose={() => { setReviewFiles(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} removeCatalogRows={removeCatalogRows} setRemoveCatalogRows={setRemoveCatalogRows} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
 }
 createRoot(document.getElementById('root')).render(<App/>);
