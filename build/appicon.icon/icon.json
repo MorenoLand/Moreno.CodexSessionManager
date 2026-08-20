@@ -20,8 +20,8 @@
               }
             }
           ],
-          "image-name" : "wails_icon_vector.svg",
-          "name" : "wails_icon_vector",
+          "image-name" : "session-shelf-icon.svg",
+          "name" : "session-shelf-icon",
           "position" : {
             "scale" : 0.85,
             "translation-in-points" : [
