@@ -3,26 +3,26 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "session_shelf.exe"
+name: "session-shelf"
 arch: ${GOARCH}
 platform: "linux"
 version: "0.1.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "Template"
-vendor: "My Company"
+description: "Local cross-platform desktop manager for Codex JSONL sessions"
+vendor: "Moreno Land"
 homepage: "https://wails.io"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/session_shelf.exe"
-    dst: "/usr/local/bin/session_shelf.exe"
+  - src: "./bin/session-shelf"
+    dst: "/usr/local/bin/session-shelf"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/session_shelf.exe.png"
-  - src: "./build/linux/session_shelf.exe.desktop"
-    dst: "/usr/share/applications/session_shelf.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/session-shelf.png"
+  - src: "./build/linux/session-shelf.desktop"
+    dst: "/usr/share/applications/session-shelf.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

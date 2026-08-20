@@ -8,27 +8,27 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="session_shelf.exe"
+        Path="session-shelf.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\My Company\Session Shelf">
+        InstallLocation="C:\Program Files\Moreno Land\Session Shelf">
     </Installer>
     <PackageInformation
         PackageName="Session Shelf"
         PackageDisplayName="Session Shelf"
-        PublisherName="CN=My Company"
-        PublisherDisplayName="My Company"
+        PublisherName="CN=Moreno Land"
+        PublisherDisplayName="Moreno Land"
         Version="0.1.0.0"
-        PackageDescription="Template">
+        PackageDescription="Local cross-platform desktop manager for Codex JSONL sessions">
         <Capabilities>
             <Capability Name="runFullTrust" />
 
         </Capabilities>
         <Applications>
             <Application
-                Id="com.example.sessionshelf"
-                Description="Template"
+                Id="com.morenoland.codexsessionmanager"
+                Description="Local cross-platform desktop manager for Codex JSONL sessions"
                 DisplayName="Session Shelf"
-                ExecutableName="session_shelf.exe"
+                ExecutableName="session-shelf.exe"
                 EntryPoint="Windows.FullTrustApplication">
 
             </Application>
@@ -42,8 +42,8 @@
         <Properties>
             <Framework>false</Framework>
             <DisplayName>Session Shelf</DisplayName>
-            <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>Template</Description>
+            <PublisherDisplayName>Moreno Land</PublisherDisplayName>
+            <Description>Local cross-platform desktop manager for Codex JSONL sessions</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>

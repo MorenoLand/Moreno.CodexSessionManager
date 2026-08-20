@@ -5,11 +5,11 @@
 	"info": {
 		"0000": {
 			"ProductVersion": "0.1.0",
-			"CompanyName": "My Company",
-			"FileDescription": "Template",
-			"LegalCopyright": "© 2026, My Company",
+			"CompanyName": "Moreno Land",
+			"FileDescription": "Local cross-platform desktop manager for Codex JSONL sessions",
+			"LegalCopyright": "Copyright (c) 2026 Moreno Land",
 			"ProductName": "Session Shelf",
-			"Comments": "This is a comment"
+			"Comments": "Review and safely reclaim local Codex session storage"
 		}
 	}
 }

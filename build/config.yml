@@ -5,11 +5,11 @@ version: '3'
 
 # This information is used to generate the build assets.
 info:
-  companyName: "Session Shelf contributors" # The name of the company
+  companyName: "Moreno Land" # The name of the company
   productName: "Session Shelf" # The name of the application
-  productIdentifier: "com.denveous.sessionshelf" # The unique product identifier
+  productIdentifier: "com.morenoland.codexsessionmanager" # The unique product identifier
   description: "Local cross-platform desktop manager for Codex JSONL sessions" # The application description
-  copyright: "Copyright (c) 2026 Session Shelf contributors" # Copyright text
+  copyright: "Copyright (c) 2026 Moreno Land" # Copyright text
   comments: "Review and safely reclaim local Codex session storage" # Comments
   version: "0.1.0" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)

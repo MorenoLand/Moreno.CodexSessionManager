@@ -1,11 +1,13 @@
 [Desktop Entry]
 Version=1.0
 Name=Session Shelf
-Comment=Template
+Comment=Local cross-platform desktop manager for Codex JSONL sessions
 # The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/session_shelf.exe %u
+Exec=/usr/local/bin/session-shelf %u
 Terminal=false
 Type=Application
-Icon=session_shelf.exe
+Icon=session-shelf
 Categories=Utility;
-StartupWMClass=session_shelf.exe
+StartupWMClass=session-shelf
+
+ 
