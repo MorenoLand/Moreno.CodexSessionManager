@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './context.css';
 import './file-table.css';
-import { apiCancelScan, apiCatalog, apiContext, apiExport, apiPickStorage, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSearchContext, apiSettings } from './backend.js';
+import { apiCancelScan, apiCatalog, apiContext, apiDiagnostics, apiExport, apiPickStorage, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSearchContext, apiSettings } from './backend.js';
 
 const icons = {
   archive: 'M4 7h16M5 7v12h14V7M8 4h8l1 3H7l1-3',
@@ -80,12 +80,12 @@ function FilterControls({ filters, setFilters, agents, compact = false }) {
 
 function Sidebar({ view, setView, onScan, queueCount }) {
   const primary = [['overview', 'Overview', 'home'], ['roots', 'Active sessions', 'branch'], ['archived', 'Archived sessions', 'archive'], ['all', 'All files', 'file'], ['catalog', 'Catalog DB', 'database']];
-  const settings = [['locations', 'Storage locations', 'folder'], ['filters', 'Filters', 'filter'], ['preferences', 'Preferences', 'settings']];
+  const settings = [['locations', 'Storage locations', 'folder'], ['filters', 'Filters', 'filter'], ['preferences', 'Preferences', 'settings'], ['diagnostics', 'Diagnostics', 'info']];
   return <aside className="sidebar"><div className="brand"><span className="brand-mark"><Icon name="archive" size={19} /></span><span>Session Shelf</span></div><div className="side-scroll"><nav className="side-nav">{primary.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav><div className="nav-heading">Actions</div><nav className="side-nav"><button className="nav-item" onClick={onScan}><Icon name="refresh" /><span>Scan sessions</span></button><button className={'nav-item ' + (view === 'queue' ? 'active' : '')} onClick={() => setView('queue')}><Icon name="archive" /><span>Review queue</span>{queueCount > 0 && <span className="nav-count">{queueCount}</span>}</button><button className={'nav-item ' + (view === 'recycle' ? 'active' : '')} onClick={() => setView('recycle')}><Icon name="trash" /><span>Recycle Bin</span></button></nav><div className="nav-heading">Settings</div><nav className="side-nav">{settings.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav></div></aside>;
 }
 function Header({ data, onScan, onCancel, scanning, scanStatus, view }) {
-  const labels = { overview: 'Overview', roots: 'Active sessions', archived: 'Archived sessions', all: 'All files', catalog: 'Catalog DB', queue: 'Review queue', recycle: 'Recycle Bin', locations: 'Storage locations', filters: 'Filters', preferences: 'Preferences' };
-  const icon = view === 'roots' ? 'folder' : view === 'all' ? 'file' : view === 'catalog' ? 'database' : view === 'recycle' ? 'trash' : view === 'locations' ? 'folder' : view === 'filters' ? 'filter' : view === 'preferences' ? 'settings' : 'archive';
+  const labels = { overview: 'Overview', roots: 'Active sessions', archived: 'Archived sessions', all: 'All files', catalog: 'Catalog DB', queue: 'Review queue', recycle: 'Recycle Bin', locations: 'Storage locations', filters: 'Filters', preferences: 'Preferences', diagnostics: 'Diagnostics' };
+  const icon = view === 'roots' ? 'folder' : view === 'all' ? 'file' : view === 'catalog' ? 'database' : view === 'recycle' ? 'trash' : view === 'locations' ? 'folder' : view === 'filters' ? 'filter' : view === 'preferences' ? 'settings' : view === 'diagnostics' ? 'info' : 'archive';
   return <header className="topbar"><div className="topbar-title"><Icon name={icon} size={23} /><span>{labels[view] || 'Session Shelf'}</span></div><div className="topbar-stats"><div className="stat-emphasis"><Icon name="database" size={22} /><strong>{data ? formatGiB(data.stats.totalBytes) : '—'}</strong></div><span>{data ? data.stats.fileCount + ' files' : 'Scanning'}</span></div><div className="topbar-actions"><Button icon="refresh" onClick={onScan} disabled={scanning}>{scanning ? 'Scanning...' : 'Scan sessions'}</Button>{scanning && scanStatus?.cancelable && <Button icon="x" onClick={onCancel}>Cancel scan</Button>}<span className={'scan-state ' + (scanning ? 'scanning' : '')}><Icon name={scanning ? 'refresh' : 'check'} size={16} />{scanning ? (scanStatus?.phase || 'Reading JSONL metadata') + (scanStatus?.filesTotal ? ' · ' + scanStatus.filesCompleted + '/' + scanStatus.filesTotal : '') : data ? 'Scanned ' + formatDate(data.scannedAt) : 'Waiting'}</span><Icon name="settings" size={20} /></div></header>;
 }
 function SearchTools({ query, setQuery, sort, setSort, filters, setFilters, agents }) {
@@ -219,6 +219,14 @@ function RecycleView() {
 }
 function PreferencesView({ preferences, updatePreferences }) {
   return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Preferences</h1><p>Real settings for scan scope and transcript previews. Changes are saved in this browser.</p></div><span>Saved locally</span></div><div className="settings-card"><label className="setting-row"><span><strong>Scan archived sessions</strong><small>Include the configured archive directory in every scan.</small></span><input type="checkbox" checked={preferences.includeArchived} onChange={event => updatePreferences({ includeArchived: event.target.checked })} /></label><label className="setting-row"><span><strong>Preview message count</strong><small>Number of user/assistant messages loaded when a session opens.</small></span><select value={preferences.previewLimit} onChange={event => updatePreferences({ previewLimit: Number(event.target.value) })}>{[1, 2, 3, 4, 5, 6, 7, 8].map(value => <option key={value} value={value}>{value} messages</option>)}</select></label></div><div className="settings-note"><Icon name="info" size={16} /><span>Transcript previews stay read-only and are capped at eight messages.</span></div></section>;
+}
+function DiagnosticsView() {
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => { apiDiagnostics().then(setDiagnostics).catch(loadError => setError(loadError.message)); }, []);
+  if (!diagnostics) return <section className="center-pane full-pane"><div className="empty-state">{error ? <><Icon name="info" size={28} /><h2>Diagnostics unavailable</h2><p>{error}</p></> : <><Icon name="info" size={28} /><h2>Loading diagnostics...</h2></>}</div></section>;
+  const status = value => value ? 'Available' : 'Missing';
+  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Diagnostics</h1><p>Local runtime and storage checks for support and issue reports.</p></div><span>{diagnostics.platform} / {diagnostics.architecture}</span></div><div className="detail-block"><div className="detail-row"><span>Runtime</span><strong>{diagnostics.desktop ? 'Wails desktop' : 'Browser fallback'}</strong></div><div className="detail-row"><span>Platform</span><strong>{diagnostics.platform} {diagnostics.architecture}</strong></div><div className="detail-row"><span>Go</span><strong>{diagnostics.goVersion || 'Not applicable'}</strong></div><div className="detail-row"><span>System trash</span><strong>{status(diagnostics.trashAvailable)}</strong></div><div className="detail-row"><span>Current sessions</span><strong className="path-text" title={diagnostics.currentRoot}>{status(diagnostics.currentRootExists)} · {diagnostics.currentRoot}</strong></div><div className="detail-row"><span>Archived sessions</span><strong className="path-text" title={diagnostics.archivedRoot}>{status(diagnostics.archivedRootExists)} · {diagnostics.archivedRoot}</strong></div><div className="detail-row"><span>Catalog DB</span><strong className="path-text" title={diagnostics.catalogDb}>{status(diagnostics.catalogDbExists)} · {diagnostics.catalogDb}</strong></div><div className="detail-row"><span>Metadata index</span><strong>{diagnostics.indexEntries} entries</strong></div><div className="detail-row"><span>Last scan</span><strong>{diagnostics.scan.phase || 'Not started'}{diagnostics.scan.filesTotal ? ' · ' + diagnostics.scan.filesCompleted + '/' + diagnostics.scan.filesTotal : ''}</strong></div></div><div className="settings-note"><Icon name="info" size={16} /><span>Paths are shown here intentionally for diagnostics; they are not displayed in the global status bar.</span></div></section>;
 }
 function FiltersView({ filters, setFilters, agents }) {
   const activeCount = [filters.minGiB, filters.minFiles, filters.agent !== 'all' ? filters.agent : '', filters.forkedOnly ? 'forked' : ''].filter(Boolean).length;
@@ -393,7 +401,7 @@ function App() {
     }
   }
   function review() {
-    const files = selectedGroup?.files.filter(file => selectedPaths.has(file.path)) || [];
+    const files = view === 'queue' ? selectedFiles : selectedGroup?.files.filter(file => selectedPaths.has(file.path)) || [];
     if (files.length) prepareReview(files, false);
   }
   async function changeCleanup(value) {
@@ -439,6 +447,7 @@ function App() {
   if (view === 'locations') content = <StorageLocationsView onSaved={scan} />;
   if (view === 'filters') content = <FiltersView filters={filters} setFilters={setFilters} agents={availableAgents} />;
   if (view === 'preferences') content = <PreferencesView preferences={preferences} updatePreferences={updatePreferences} />;
+  if (view === 'diagnostics') content = <DiagnosticsView />;
   const browsingRoots = view === 'roots' || view === 'archived';
   return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} onCancel={cancelScan} scanning={scanning} scanStatus={scanStatus} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} safety={recycleReview} onClose={() => { setReviewFiles(null); setRecycleReview(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} reviewBusy={reviewBusy} removeCatalogRows={removeCatalogRows} onCleanupChange={changeCleanup} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
 }

@@ -15,6 +15,7 @@ export {
     ContextMessage,
     ContextPreview,
     ContextSearch,
+    Diagnostics,
     Group,
     RecycleCheck,
     RecycleItem,

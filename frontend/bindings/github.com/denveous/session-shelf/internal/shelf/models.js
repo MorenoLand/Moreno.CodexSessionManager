@@ -467,6 +467,143 @@ export class ContextSearch {
     }
 }
 
+export class Diagnostics {
+    /**
+     * Creates a new Diagnostics instance.
+     * @param {Partial<Diagnostics>} [$$source = {}] - The source object to create the Diagnostics.
+     */
+    constructor($$source = {}) {
+        if (!("platform" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["platform"] = "";
+        }
+        if (!("architecture" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["architecture"] = "";
+        }
+        if (!("goVersion" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["goVersion"] = "";
+        }
+        if (!("desktop" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["desktop"] = false;
+        }
+        if (!("trashAvailable" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["trashAvailable"] = false;
+        }
+        if (!("currentRoot" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["currentRoot"] = "";
+        }
+        if (!("currentRootExists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["currentRootExists"] = false;
+        }
+        if (!("archivedRoot" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["archivedRoot"] = "";
+        }
+        if (!("archivedRootExists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["archivedRootExists"] = false;
+        }
+        if (!("catalogDb" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["catalogDb"] = "";
+        }
+        if (!("catalogDbExists" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["catalogDbExists"] = false;
+        }
+        if (!("settingsPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["settingsPath"] = "";
+        }
+        if (!("indexPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["indexPath"] = "";
+        }
+        if (!("aliasesPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["aliasesPath"] = "";
+        }
+        if (!("indexEntries" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["indexEntries"] = 0;
+        }
+        if (!("scan" in $$source)) {
+            /**
+             * @member
+             * @type {ScanStatus}
+             */
+            this["scan"] = (new ScanStatus());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Diagnostics instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Diagnostics}
+     */
+    static createFrom($$source = {}) {
+        const $$createField15_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("scan" in $$parsedSource) {
+            $$parsedSource["scan"] = $$createField15_0($$parsedSource["scan"]);
+        }
+        return new Diagnostics(/** @type {Partial<Diagnostics>} */($$parsedSource));
+    }
+}
+
 export class Group {
     /**
      * Creates a new Group instance.
@@ -589,7 +726,7 @@ export class Group {
      */
     static createFrom($$source = {}) {
         const $$createField12_0 = $$createType0;
-        const $$createField14_0 = $$createType6;
+        const $$createField14_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("agents" in $$parsedSource) {
             $$parsedSource["agents"] = $$createField12_0($$parsedSource["agents"]);
@@ -757,8 +894,8 @@ export class RecycleResponse {
      * @returns {RecycleResponse}
      */
     static createFrom($$source = {}) {
-        const $$createField0_0 = $$createType8;
-        const $$createField1_0 = $$createType9;
+        const $$createField0_0 = $$createType9;
+        const $$createField1_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("result" in $$parsedSource) {
             $$parsedSource["result"] = $$createField0_0($$parsedSource["result"]);
@@ -814,8 +951,8 @@ export class RecycleReview {
      * @returns {RecycleReview}
      */
     static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType11;
-        const $$createField3_0 = $$createType12;
+        const $$createField2_0 = $$createType12;
+        const $$createField3_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("files" in $$parsedSource) {
             $$parsedSource["files"] = $$createField2_0($$parsedSource["files"]);
@@ -927,13 +1064,13 @@ export class ScanResult {
      * @returns {ScanResult}
      */
     static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType13;
-        const $$createField6_0 = $$createType13;
-        const $$createField7_0 = $$createType13;
-        const $$createField8_0 = $$createType15;
-        const $$createField9_0 = $$createType17;
-        const $$createField10_0 = $$createType17;
-        const $$createField11_0 = $$createType6;
+        const $$createField5_0 = $$createType14;
+        const $$createField6_0 = $$createType14;
+        const $$createField7_0 = $$createType14;
+        const $$createField8_0 = $$createType16;
+        const $$createField9_0 = $$createType18;
+        const $$createField10_0 = $$createType18;
+        const $$createField11_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
             $$parsedSource["stats"] = $$createField5_0($$parsedSource["stats"]);
@@ -1032,9 +1169,9 @@ export class ScanRoot {
      * @returns {ScanRoot}
      */
     static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType13;
-        const $$createField6_0 = $$createType17;
-        const $$createField7_0 = $$createType6;
+        const $$createField5_0 = $$createType14;
+        const $$createField6_0 = $$createType18;
+        const $$createField7_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
             $$parsedSource["stats"] = $$createField5_0($$parsedSource["stats"]);
@@ -1401,7 +1538,7 @@ export class StorageSettings {
      * @returns {StorageSettings}
      */
     static createFrom($$source = {}) {
-        const $$createField4_0 = $$createType18;
+        const $$createField4_0 = $$createType19;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("defaults" in $$parsedSource) {
             $$parsedSource["defaults"] = $$createField4_0($$parsedSource["defaults"]);
@@ -1493,19 +1630,20 @@ const $$createType1 = CatalogRow.createFrom;
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = ContextMessage.createFrom;
 const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = SessionFile.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = RecycleItem.createFrom;
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = $Create.Struct({
+const $$createType5 = ScanStatus.createFrom;
+const $$createType6 = SessionFile.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = RecycleItem.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $Create.Struct({
     "ids": $$createType0,
 });
-const $$createType10 = RecycleCheck.createFrom;
-const $$createType11 = $Create.Array($$createType10);
-const $$createType12 = CatalogCheck.createFrom;
-const $$createType13 = Stats.createFrom;
-const $$createType14 = ScanRoot.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = Group.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = StorageLocations.createFrom;
+const $$createType11 = RecycleCheck.createFrom;
+const $$createType12 = $Create.Array($$createType11);
+const $$createType13 = CatalogCheck.createFrom;
+const $$createType14 = Stats.createFrom;
+const $$createType15 = ScanRoot.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = Group.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = StorageLocations.createFrom;

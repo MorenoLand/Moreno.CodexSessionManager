@@ -39,6 +39,13 @@ export async function apiScanStatus() {
   return service ? service.GetScanStatus() : { running: false, cancelable: false, phase: '', filesTotal: 0, filesCompleted: 0, indexHits: 0, indexMisses: 0, cancelled: false };
 }
 
+export async function apiDiagnostics() {
+  const service = await wailsService();
+  if (service) return service.GetDiagnostics();
+  const settings = await apiSettings();
+  return { platform: navigator.platform, architecture: 'browser', goVersion: '', desktop: false, trashAvailable: false, currentRoot: settings.currentRoot, currentRootExists: false, archivedRoot: settings.archivedRoot, archivedRootExists: false, catalogDb: settings.catalogDb, catalogDbExists: false, settingsPath: settings.settingsPath, indexPath: '', aliasesPath: '', indexEntries: 0, scan: { running: false, cancelable: false, phase: '', filesTotal: 0, filesCompleted: 0, indexHits: 0, indexMisses: 0, cancelled: false } };
+}
+
 export async function apiCancelScan() {
   const service = await wailsService();
   return service ? service.CancelScan() : false;

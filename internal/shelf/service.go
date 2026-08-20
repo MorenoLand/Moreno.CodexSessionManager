@@ -125,6 +125,25 @@ type ScanStatus struct {
 	Cancelled      bool   `json:"cancelled"`
 }
 
+type Diagnostics struct {
+	Platform           string     `json:"platform"`
+	Architecture       string     `json:"architecture"`
+	GoVersion          string     `json:"goVersion"`
+	Desktop            bool       `json:"desktop"`
+	TrashAvailable     bool       `json:"trashAvailable"`
+	CurrentRoot        string     `json:"currentRoot"`
+	CurrentRootExists  bool       `json:"currentRootExists"`
+	ArchivedRoot       string     `json:"archivedRoot"`
+	ArchivedRootExists bool       `json:"archivedRootExists"`
+	CatalogDB          string     `json:"catalogDb"`
+	CatalogDBExists    bool       `json:"catalogDbExists"`
+	SettingsPath       string     `json:"settingsPath"`
+	IndexPath          string     `json:"indexPath"`
+	AliasesPath        string     `json:"aliasesPath"`
+	IndexEntries       int        `json:"indexEntries"`
+	Scan               ScanStatus `json:"scan"`
+}
+
 type ContextMessage struct {
 	Role string `json:"role"`
 	Text string `json:"text"`
@@ -516,6 +535,19 @@ func (s *Service) GetScanStatus() ScanStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.scanStatus
+}
+
+func (s *Service) GetDiagnostics() Diagnostics {
+	locations := s.locations()
+	_, currentErr := os.Stat(locations.CurrentRoot)
+	_, archivedErr := os.Stat(locations.ArchivedRoot)
+	_, catalogErr := os.Stat(locations.CatalogDB)
+	s.mu.RLock()
+	entries := len(s.scanIndex)
+	status := s.scanStatus
+	settingsPath, indexPath, aliasesPath := s.settingsPath, s.indexPath, s.aliasesPath
+	s.mu.RUnlock()
+	return Diagnostics{Platform: runtime.GOOS, Architecture: runtime.GOARCH, GoVersion: runtime.Version(), Desktop: application.Get() != nil, TrashAvailable: trashAvailable(), CurrentRoot: locations.CurrentRoot, CurrentRootExists: currentErr == nil, ArchivedRoot: locations.ArchivedRoot, ArchivedRootExists: archivedErr == nil, CatalogDB: locations.CatalogDB, CatalogDBExists: catalogErr == nil, SettingsPath: settingsPath, IndexPath: indexPath, AliasesPath: aliasesPath, IndexEntries: entries, Scan: status}
 }
 
 func samePath(left, right string) bool {
