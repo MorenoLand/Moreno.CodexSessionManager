@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
-import { createReadStream, realpathSync } from 'node:fs';
-import { access, copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { constants, createReadStream, realpathSync } from 'node:fs';
+import { access, copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import os from 'node:os';
@@ -34,13 +34,18 @@ function refreshSessionRoots() {
   sessionRoots = [
     { key: 'current', label: 'Current sessions', path: rootDir, archived: false },
     { key: 'archived', label: 'Archived sessions', path: archivedRootDir, archived: true }
-  ].filter((root, index, roots) => roots.findIndex(candidate => candidate.path.toLowerCase() === root.path.toLowerCase()) === index);
+  ].filter((root, index, roots) => roots.findIndex(candidate => pathKey(candidate.path) === pathKey(root.path)) === index);
 }
 
 function absoluteStoragePath(value, label) {
   const text = String(value || '').trim();
   if (!text || !path.isAbsolute(text)) throw new Error(`${label} must be an absolute path.`);
   return path.resolve(text);
+}
+
+function pathKey(filePath) {
+  const absolute = path.resolve(filePath);
+  return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
 }
 
 function pathsOverlap(left, right) {
@@ -518,7 +523,7 @@ async function scanSessions(includeArchived = true) {
   const totalBytes = files.reduce((total, item) => total + item.sizeBytes, 0);
   const current = roots.find((source) => !source.archived);
   const archived = roots.find((source) => source.archived);
-  lastScanFiles = new Map(files.map((file) => [path.resolve(file.path).toLowerCase(), { sizeBytes: file.sizeBytes, lastModified: file.lastModified }]));
+  lastScanFiles = new Map(files.map((file) => [pathKey(file.path), { sizeBytes: file.sizeBytes, lastModified: file.lastModified }]));
   return {
     root: rootDir,
     archivedRoot: archivedRootDir,
@@ -533,18 +538,25 @@ async function scanSessions(includeArchived = true) {
   };
 }
 
-function isWithinScanRoot(filePath) {
-  const absolute = path.resolve(filePath);
-  if (path.extname(absolute).toLowerCase() !== '.jsonl') return false;
+function relativePathUnderRoot(root, filePath) {
+  const relative = path.relative(path.resolve(root), path.resolve(filePath));
+  return relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative) ? relative : '';
+}
+
+function isWithinSessionRoot(filePath, root) {
+  if (!relativePathUnderRoot(root, filePath)) return false;
   try {
-    const resolvedFile = realpathSync(absolute).toLowerCase();
-    return sessionRoots.some(root => {
-      const resolvedRoot = realpathSync(root.path).toLowerCase();
-      return resolvedFile.startsWith(`${resolvedRoot}${path.sep}`);
-    });
+    const resolvedFile = pathKey(realpathSync(filePath));
+    const resolvedRoot = pathKey(realpathSync(root));
+    return resolvedFile.startsWith(`${resolvedRoot}${path.sep}`);
   } catch {
     return false;
   }
+}
+
+function isWithinScanRoot(filePath) {
+  const absolute = path.resolve(filePath);
+  return path.extname(absolute).toLowerCase() === '.jsonl' && sessionRoots.some(root => isWithinSessionRoot(absolute, root.path));
 }
 
 async function reviewRecycle(paths, removeCatalogRows) {
@@ -563,7 +575,7 @@ async function reviewRecycle(paths, removeCatalogRows) {
     if (info) {
       item.currentSizeBytes = Number(info.size);
       item.currentLastModified = info.mtime.toISOString();
-      const snapshot = lastScanFiles.get(absolute.toLowerCase());
+      const snapshot = lastScanFiles.get(pathKey(absolute));
       if (!snapshot) item.error = 'File was not part of the latest scan; scan again before moving it.';
       else {
         item.scannedSizeBytes = Number(snapshot.sizeBytes);
@@ -594,9 +606,62 @@ async function reviewRecycle(paths, removeCatalogRows) {
   return review;
 }
 
+async function reviewArchive(paths) {
+  const unique = [...new Set(paths.map((filePath) => String(filePath).trim()).filter(Boolean))];
+  if (!unique.length) throw new Error('No files selected');
+  const review = { safe: true, totalBytes: 0, archivedRoot: archivedRootDir, error: '', files: [] };
+  if (pathsOverlap(rootDir, archivedRootDir)) review.error = 'Current and archived session directories must not overlap.';
+  if (!review.error) {
+    try {
+      const archiveInfo = await stat(archivedRootDir);
+      if (!archiveInfo.isDirectory()) review.error = 'The configured archived sessions path is not a directory.';
+    } catch (error) {
+      if (error.code !== 'ENOENT') review.error = 'The configured archived sessions directory is unavailable.';
+    }
+  }
+  for (const filePath of unique) {
+    const absolute = path.resolve(filePath);
+    const relative = relativePathUnderRoot(rootDir, absolute);
+    const item = { path: absolute, destination: relative ? path.resolve(archivedRootDir, relative) : '', name: path.basename(absolute), ok: false, error: '', currentSizeBytes: 0, scannedSizeBytes: 0, currentLastModified: '', scannedLastModified: '' };
+    if (review.error) item.error = review.error;
+    else if (!relative || !isWithinSessionRoot(absolute, rootDir)) item.error = 'Only files in the active sessions directory can be archived.';
+    if (!item.error) {
+      try { await stat(item.destination); item.error = 'An archived file with the same relative path already exists.'; } catch (error) { if (error.code !== 'ENOENT') item.error = 'The archive destination cannot be checked.'; }
+    }
+    let info = null;
+    if (!item.error) {
+      try { info = await stat(absolute); } catch { item.error = 'File is no longer available; scan again before archiving it.'; }
+    }
+    if (info?.isDirectory()) item.error = 'Selected path is a directory.';
+    if (info) {
+      item.currentSizeBytes = Number(info.size);
+      item.currentLastModified = info.mtime.toISOString();
+      const snapshot = lastScanFiles.get(pathKey(absolute));
+      if (!snapshot) item.error = 'File was not part of the latest scan; scan again before archiving it.';
+      else {
+        item.scannedSizeBytes = Number(snapshot.sizeBytes);
+        item.scannedLastModified = snapshot.lastModified;
+        if (item.currentSizeBytes !== item.scannedSizeBytes || item.currentLastModified !== item.scannedLastModified) item.error = 'File changed since the last scan; scan again before archiving it.';
+      }
+      if (!item.error) {
+        try { await access(absolute); item.ok = true; } catch { item.error = 'File cannot be opened for verification; it may be locked or inaccessible.'; }
+      }
+    }
+    if (!item.ok) review.safe = false;
+    else review.totalBytes += item.currentSizeBytes;
+    review.files.push(item);
+  }
+  return review;
+}
+
 function recycleReviewError(review) {
   const file = review.files.find((item) => !item.ok);
   return file ? `Recycle blocked for ${file.name}: ${file.error}` : review.catalog.error || 'Recycle blocked by a safety check';
+}
+
+function archiveReviewError(review) {
+  const file = review.files.find((item) => !item.ok);
+  return file ? `Archive blocked for ${file.name}: ${file.error}` : review.error || 'Archive blocked by a safety check';
 }
 
 function readBody(request) {
@@ -626,6 +691,37 @@ async function recycleFiles(paths) {
       result.push({ path: filePath, ok: true });
     } catch (error) {
       result.push({ path: filePath, ok: false, error: error.message });
+    }
+  }
+  return result;
+}
+
+async function moveSessionFile(source, destination) {
+  try { await stat(destination); throw new Error('Archive destination already exists.'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  await mkdir(path.dirname(destination), { recursive: true });
+  try {
+    await rename(source, destination);
+    return;
+  } catch (error) {
+    if (error.code !== 'EXDEV') throw error;
+  }
+  try {
+    await copyFile(source, destination, constants.COPYFILE_EXCL);
+    await rm(source);
+  } catch (error) {
+    try { await rm(destination); } catch {}
+    throw error;
+  }
+}
+
+async function archiveFiles(files) {
+  const result = [];
+  for (const file of files) {
+    try {
+      await moveSessionFile(file.path, file.destination);
+      result.push({ path: file.path, destination: file.destination, ok: true });
+    } catch (error) {
+      result.push({ path: file.path, destination: file.destination, ok: false, error: error.message });
     }
   }
   return result;
@@ -716,6 +812,17 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/api/recycle/review') {
       const payload = JSON.parse(await readBody(request));
       return sendJson(response, 200, await reviewRecycle(Array.isArray(payload.paths) ? payload.paths : [], payload.removeCatalogRows === true));
+    }
+    if (request.method === 'POST' && url.pathname === '/api/archive/review') {
+      const payload = JSON.parse(await readBody(request));
+      return sendJson(response, 200, await reviewArchive(Array.isArray(payload.paths) ? payload.paths : []));
+    }
+    if (request.method === 'POST' && url.pathname === '/api/archive') {
+      const payload = JSON.parse(await readBody(request));
+      const paths = [...new Set(Array.isArray(payload.paths) ? payload.paths.map(String) : [])];
+      const review = await reviewArchive(paths);
+      if (!review.safe) return sendJson(response, 400, { error: archiveReviewError(review), review });
+      return sendJson(response, 200, { result: await archiveFiles(review.files.filter((item) => item.ok)) });
     }
     if (request.method === 'POST' && url.pathname === '/api/recycle') {
       const payload = JSON.parse(await readBody(request));

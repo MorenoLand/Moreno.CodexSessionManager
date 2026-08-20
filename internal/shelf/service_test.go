@@ -2,6 +2,7 @@ package shelf
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,5 +177,39 @@ func TestSearchContextFindsMatchingMessages(t *testing.T) {
 	}
 	if !result.Complete || len(result.Matches) != 1 || result.Matches[0].Role != "user" {
 		t.Fatalf("expected one matching user message: %+v", result)
+	}
+}
+
+func TestArchiveMovesFilesToConfiguredArchive(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(t.TempDir(), "archive")
+	filename := filepath.Join(root, "2026", "08", "rollout-2026-08-20-01a01cc5-38a6-7431-bb4c-965672f007f6.jsonl")
+	if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("{\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"content\":\"Archive this\"}}\n")
+	if err := os.WriteFile(filename, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := testService(t, root, archive, filepath.Join(t.TempDir(), "catalog.db"))
+	info, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.lastScan[pathKey(filename)] = scanSnapshot{SizeBytes: info.Size(), LastModified: info.ModTime().UTC().Format(time.RFC3339Nano)}
+	review, err := service.ReviewArchive([]string{filename})
+	if err != nil || !review.Safe || len(review.Files) != 1 {
+		t.Fatalf("expected safe archive review, review=%+v err=%v", review, err)
+	}
+	response, err := service.Archive([]string{filename})
+	if err != nil || len(response.Result) != 1 || !response.Result[0].OK {
+		t.Fatalf("expected archive move, response=%+v err=%v", response, err)
+	}
+	destination := filepath.Join(archive, "2026", "08", filepath.Base(filename))
+	if _, err := os.Stat(destination); err != nil {
+		t.Fatalf("archived file missing: %v", err)
+	}
+	if _, err := os.Stat(filename); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("source file still exists or could not be checked: %v", err)
 	}
 }

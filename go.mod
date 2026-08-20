@@ -1,4 +1,4 @@
-module github.com/denveous/session-shelf
+module github.com/MorenoLand/Moreno.CodexSessionManager
 
 go 1.26
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -241,6 +242,37 @@ type RecycleResponse struct {
 		BackupPath string   `json:"backupPath"`
 		Error      string   `json:"error"`
 	} `json:"catalog"`
+}
+
+type ArchiveItem struct {
+	Path        string `json:"path"`
+	Destination string `json:"destination"`
+	OK          bool   `json:"ok"`
+	Error       string `json:"error,omitempty"`
+}
+
+type ArchiveCheck struct {
+	Path                string `json:"path"`
+	Destination         string `json:"destination"`
+	Name                string `json:"name"`
+	OK                  bool   `json:"ok"`
+	Error               string `json:"error,omitempty"`
+	CurrentSizeBytes    int64  `json:"currentSizeBytes"`
+	ScannedSizeBytes    int64  `json:"scannedSizeBytes"`
+	CurrentLastModified string `json:"currentLastModified"`
+	ScannedLastModified string `json:"scannedLastModified"`
+}
+
+type ArchiveReview struct {
+	Safe         bool           `json:"safe"`
+	TotalBytes   int64          `json:"totalBytes"`
+	ArchivedRoot string         `json:"archivedRoot"`
+	Error        string         `json:"error,omitempty"`
+	Files        []ArchiveCheck `json:"files"`
+}
+
+type ArchiveResponse struct {
+	Result []ArchiveItem `json:"result"`
 }
 
 type scanSnapshot struct {
@@ -1389,7 +1421,7 @@ func extractContextMessage(record any) ContextMessage {
 	return ContextMessage{}
 }
 
-func (s *Service) isWithinScanRoot(filename string) bool {
+func isWithinRoot(filename, root string) bool {
 	absolute, err := filepath.Abs(filename)
 	if err != nil || strings.ToLower(filepath.Ext(absolute)) != ".jsonl" {
 		return false
@@ -1398,18 +1430,30 @@ func (s *Service) isWithinScanRoot(filename string) bool {
 	if err != nil {
 		return false
 	}
-	locations := s.locations()
-	for _, root := range []string{locations.CurrentRoot, locations.ArchivedRoot} {
-		resolvedRoot, rootErr := filepath.EvalSymlinks(root)
-		if rootErr != nil {
-			continue
-		}
-		relative, relErr := filepath.Rel(resolvedRoot, resolvedFile)
-		if relErr == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
-			return true
-		}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
 	}
-	return false
+	relative, err := filepath.Rel(resolvedRoot, resolvedFile)
+	return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
+}
+
+func relativePathUnder(root, filename string) (string, bool) {
+	rootAbsolute, rootErr := filepath.Abs(root)
+	fileAbsolute, fileErr := filepath.Abs(filename)
+	if rootErr != nil || fileErr != nil {
+		return "", false
+	}
+	relative, err := filepath.Rel(rootAbsolute, fileAbsolute)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return "", false
+	}
+	return relative, true
+}
+
+func (s *Service) isWithinScanRoot(filename string) bool {
+	locations := s.locations()
+	return isWithinRoot(filename, locations.CurrentRoot) || isWithinRoot(filename, locations.ArchivedRoot)
 }
 
 func pathKey(filename string) string {
@@ -1559,6 +1603,196 @@ func (s *Service) Recycle(paths []string, removeCatalogRows bool) (RecycleRespon
 				response.Catalog.BackupPath = removed.BackupPath
 			}
 		}
+	}
+	return response, nil
+}
+
+func (s *Service) ReviewArchive(paths []string) (ArchiveReview, error) {
+	unique := uniqueStrings(paths)
+	if len(unique) == 0 {
+		return ArchiveReview{}, errors.New("No files selected")
+	}
+	locations := s.locations()
+	review := ArchiveReview{Safe: true, ArchivedRoot: locations.ArchivedRoot, Files: []ArchiveCheck{}}
+	for _, filename := range unique {
+		check := s.checkArchiveFile(filename)
+		review.Files = append(review.Files, check)
+		if !check.OK {
+			review.Safe = false
+			continue
+		}
+		review.TotalBytes += check.CurrentSizeBytes
+	}
+	return review, nil
+}
+
+func (s *Service) checkArchiveFile(filename string) ArchiveCheck {
+	absolute, err := filepath.Abs(filename)
+	if err != nil {
+		absolute = filepath.Clean(filename)
+	}
+	locations := s.locations()
+	check := ArchiveCheck{Path: absolute, Name: filepath.Base(absolute)}
+	if pathsOverlap(locations.CurrentRoot, locations.ArchivedRoot) {
+		check.Error = "Current and archived session directories must not overlap."
+		return check
+	}
+	if !isWithinRoot(absolute, locations.CurrentRoot) {
+		check.Error = "Only files in the active sessions directory can be archived."
+		return check
+	}
+	relative, ok := relativePathUnder(locations.CurrentRoot, absolute)
+	if !ok {
+		check.Error = "The file is not inside the active sessions directory."
+		return check
+	}
+	check.Destination = filepath.Join(locations.ArchivedRoot, relative)
+	if info, err := os.Stat(locations.ArchivedRoot); err == nil && !info.IsDir() {
+		check.Error = "The configured archived sessions path is not a directory."
+		return check
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		check.Error = "The configured archived sessions directory is unavailable."
+		return check
+	}
+	if _, err := os.Stat(check.Destination); err == nil {
+		check.Error = "An archived file with the same relative path already exists."
+		return check
+	} else if !errors.Is(err, os.ErrNotExist) {
+		check.Error = "The archive destination cannot be checked."
+		return check
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		check.Error = "File is no longer available; scan again before archiving it."
+		return check
+	}
+	if info.IsDir() {
+		check.Error = "Selected path is a directory."
+		return check
+	}
+	check.CurrentSizeBytes = info.Size()
+	check.CurrentLastModified = info.ModTime().UTC().Format(time.RFC3339Nano)
+	s.mu.RLock()
+	snapshot, found := s.lastScan[pathKey(absolute)]
+	s.mu.RUnlock()
+	if !found {
+		check.Error = "File was not part of the latest scan; scan again before archiving it."
+		return check
+	}
+	check.ScannedSizeBytes = snapshot.SizeBytes
+	check.ScannedLastModified = snapshot.LastModified
+	if check.CurrentSizeBytes != snapshot.SizeBytes || check.CurrentLastModified != snapshot.LastModified {
+		check.Error = "File changed since the last scan; scan again before archiving it."
+		return check
+	}
+	handle, err := os.Open(absolute)
+	if err != nil {
+		check.Error = "File cannot be opened for verification; it may be locked or inaccessible."
+		return check
+	}
+	handle.Close()
+	check.OK = true
+	return check
+}
+
+func archiveReviewError(review ArchiveReview) error {
+	if review.Error != "" {
+		return errors.New(review.Error)
+	}
+	for _, file := range review.Files {
+		if !file.OK {
+			return fmt.Errorf("Archive blocked for %s: %s", file.Name, file.Error)
+		}
+	}
+	return errors.New("Archive blocked by a safety check")
+}
+
+func moveSessionFile(source, destination string, expectedSize int64, expectedModified string) error {
+	if _, err := os.Stat(destination); err == nil {
+		return errors.New("Archive destination already exists.")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(source, destination); err == nil {
+		return nil
+	}
+	sourceFile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	sourceClosed := false
+	defer func() {
+		if !sourceClosed {
+			_ = sourceFile.Close()
+		}
+	}()
+	sourceInfo, err := sourceFile.Stat()
+	if err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(destination), ".session-shelf-archive-*")
+	if err != nil {
+		return err
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if _, err = io.Copy(temporary, sourceFile); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err = temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err = temporary.Chmod(sourceInfo.Mode()); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err = temporary.Close(); err != nil {
+		return err
+	}
+	if err = sourceFile.Close(); err != nil {
+		return err
+	}
+	sourceClosed = true
+	latest, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	if latest.Size() != expectedSize || latest.ModTime().UTC().Format(time.RFC3339Nano) != expectedModified {
+		return errors.New("File changed during archive; nothing was moved.")
+	}
+	if _, err = os.Stat(destination); err == nil {
+		return errors.New("Archive destination appeared during the move.")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err = os.Rename(temporaryName, destination); err != nil {
+		return err
+	}
+	return os.Remove(source)
+}
+
+func (s *Service) Archive(paths []string) (ArchiveResponse, error) {
+	review, err := s.ReviewArchive(paths)
+	if err != nil {
+		return ArchiveResponse{}, err
+	}
+	if !review.Safe {
+		return ArchiveResponse{}, archiveReviewError(review)
+	}
+	response := ArchiveResponse{Result: []ArchiveItem{}}
+	for _, file := range review.Files {
+		item := ArchiveItem{Path: file.Path, Destination: file.Destination}
+		if err := moveSessionFile(file.Path, file.Destination, file.CurrentSizeBytes, file.CurrentLastModified); err != nil {
+			item.Error = err.Error()
+		} else {
+			item.OK = true
+		}
+		response.Result = append(response.Result, item)
 	}
 	return response, nil
 }

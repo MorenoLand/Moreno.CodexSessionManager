@@ -4,7 +4,7 @@ import (
 	"embed"
 	"log"
 
-	"github.com/denveous/session-shelf/internal/shelf"
+	"github.com/MorenoLand/Moreno.CodexSessionManager/internal/shelf"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 

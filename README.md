@@ -74,6 +74,7 @@ Override locations per process when the Codex installation uses a different layo
 - **Storage locations** edits the absolute current-session, archived-session, and Catalog DB paths and saves them persistently.
 - In the Wails desktop app, **Browse** uses native folder/file dialogs; overlapping current/archive roots are rejected before saving.
 - **Search transcript** streams a selected root for message matches, while the Overview can export metadata as JSON or CSV.
+- Active conversations can be archived directly from the inspector after a fresh preflight; paths are preserved below the configured archive root and Catalog DB rows remain intact.
 - **Diagnostics** reports platform support, configured storage availability, trash support, scan status, and local index state.
 - Selections persist across roots in the Review queue, so bulk review does not silently narrow to the currently highlighted conversation.
 - **Rename** creates a local title alias when the Codex catalog title is missing or noisy; aliases are stored separately from transcripts.
@@ -86,6 +87,7 @@ Override locations per process when the Codex installation uses a different layo
 - Scanning reads JSONL metadata only; transcript previews read only the selected root on demand.
 - Current and archived sessions are scanned separately and can be reviewed with the same grouping and preview workflow.
 - The move dialog requires typing `MOVE`.
+- The archive dialog requires typing `ARCHIVE`; it never removes Catalog DB rows and blocks root overlap, collisions, changed files, and unscanned files.
 - Every move runs a fresh size/mtime/path/access preflight against the latest scan and blocks changed or unscanned files.
 - The optional **Remove matching Catalog DB entries** checkbox is off by default. When enabled, Session Shelf removes only UUIDs belonging to files that successfully reached system trash, in one transactional database operation.
 - Catalog cleanup creates a timestamped SQLite backup before any row mutation; the backup is preserved even if a later cleanup step fails.

@@ -4,7 +4,7 @@ import './styles.css';
 import './context.css';
 import './file-table.css';
 import './window-chrome.css';
-import { apiCancelScan, apiCatalog, apiContext, apiDiagnostics, apiExport, apiPickStorage, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSearchContext, apiSettings } from './backend.js';
+import { apiArchive, apiCancelScan, apiCatalog, apiContext, apiDiagnostics, apiExport, apiPickStorage, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewArchive, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSearchContext, apiSettings } from './backend.js';
 import { closeWindow, hasDesktopWindow, isWindowMaximised, minimiseWindow, subscribeWindowState, toggleMaximiseWindow } from './windowControls.js';
 
 const icons = {
@@ -147,7 +147,7 @@ function TranscriptSearch({ group }) {
   }
   return <section className="transcript-search"><div className="transcript-search-head"><strong>Search transcript</strong><span>Searches the selected root without editing it.</span></div><div className="transcript-search-form"><input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') search(); }} placeholder="Search messages..." /><Button onClick={search} disabled={busy || !query.trim()}>{busy ? 'Searching...' : 'Search'}</Button></div>{result && <div className="transcript-search-results">{result.readError ? <p className="context-error">{result.readError}</p> : result.matches.length ? result.matches.map((message, index) => <article className={'context-message ' + message.role} key={message.role + '-' + index}><div className="context-message-meta"><strong>{message.role === 'user' ? 'You' : 'Codex'}</strong><span>{index + 1}/{result.matches.length}</span></div><div className="context-bubble"><p>{message.text}</p></div></article>) : <p className="context-state">No matching messages.</p>}{result.matches.length > 0 && <small>{result.complete ? 'Search reached the end of the transcript.' : 'Showing the first 20 matches.'}</small>}</div>}</section>;
 }
-function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGroup, review, reveal, previewLimit, onAlias }) {
+function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGroup, review, reveal, previewLimit, onAlias, onArchive, archiveBusy }) {
   const [context, setContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState('');
@@ -177,7 +177,7 @@ function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGrou
   }
   if (!group) return <aside className="inspector empty-inspector"><div className="empty-illustration"><Icon name="branch" size={30} /></div><h2>Choose a conversation root</h2><p>Select a group to see its forked files, lineage, and reclaimable space.</p></aside>;
   const selectedInGroup = group.files.filter(file => selectedPaths.has(file.path)).length;
-  return <aside className="inspector"><div className="inspector-top"><div><h1>{group.title}</h1><p className="inspector-size">{formatGiB(group.sizeBytes)} <span>reclaimable</span></p></div><span className="file-count"><strong>{group.fileCount}</strong><small>files</small></span></div><Button variant="primary" icon="archive" onClick={review} disabled={!selectedInGroup || kept}>Review {selectedInGroup || group.fileCount} files</Button><div className="detail-block"><div className="detail-row"><span>Root thread</span><strong className="copyable" title={group.rootId}>{shortId(group.rootId)} <Icon name="copy" size={14} /></strong></div><div className="detail-row"><span>Codex title</span><div className="title-value"><strong>{group.title}</strong><button className="title-edit" onClick={() => { setAliasDraft(group.title); setAliasEditing(true); }}>Rename</button></div></div>{aliasEditing && <div className="alias-editor"><input value={aliasDraft} onChange={event => setAliasDraft(event.target.value)} maxLength={120} autoFocus /><div><Button onClick={() => setAliasEditing(false)} disabled={aliasBusy}>Cancel</Button><Button variant="primary" onClick={saveAlias} disabled={aliasBusy}>{aliasBusy ? 'Saving...' : 'Save alias'}</Button></div>{aliasError && <small>{aliasError}</small>}</div>}<div className="detail-row"><span>First request</span><strong className="detail-prompt" title={group.prompt}>{promptPreview(group.prompt) || 'No user prompt found'}</strong></div><div className="detail-row"><span>Forked agents</span><div className="agent-list">{group.agents.length ? group.agents.map(agent => <span className="agent-chip" key={agent}><i />{agent}</span>) : <span className="muted">No named agents</span>}</div></div><div className="detail-row"><span>Last activity</span><strong>{formatDate(group.lastActivity)}</strong></div><div className="detail-row"><span>File count</span><strong>{group.fileCount} JSONL files</strong></div><div className="detail-row"><span>Location</span><strong className="path-text" title={group.cwd}>{group.cwd || 'Unknown'}</strong></div></div><ContextPreview group={group} context={context} loading={contextLoading} error={contextError} loadContext={loadContext} /><TranscriptSearch group={group} /><div className="forked-heading"><h2>Forked files <span>({group.fileCount})</span></h2><label><input type="checkbox" checked={selectedInGroup === group.fileCount} onChange={() => toggleGroup(group)} /> Select all</label></div><FileTable files={group.files} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /><div className="safe-zone"><div className="review-box"><Icon name={kept ? 'check' : 'unlock'} size={20} /><div><strong>{kept ? 'Conversation kept' : 'Review required'}</strong><span>{kept ? 'This root is excluded from the review queue.' : 'Review the selected files before they can move to the Recycle Bin.'}</span></div></div><label className="keep-toggle"><input type="checkbox" checked={kept} onChange={event => setKept(event.target.checked)} /><span><strong>Keep this conversation</strong><small>Exclude from deletion</small></span></label><Button variant="danger" icon="trash" onClick={review} disabled={!selectedInGroup || kept}>Move selected to Recycle Bin</Button><div className="selection-foot"><span>{selectedInGroup} of {group.fileCount} files selected</span><span>{formatBytes(group.files.filter(file => selectedPaths.has(file.path)).reduce((sum, file) => sum + file.sizeBytes, 0))}</span></div></div></aside>;
+  return <aside className="inspector"><div className="inspector-top"><div><h1>{group.title}</h1><p className="inspector-size">{formatGiB(group.sizeBytes)} <span>reclaimable</span></p></div><span className="file-count"><strong>{group.fileCount}</strong><small>files</small></span></div><div className="inspector-actions"><Button variant="primary" icon="archive" onClick={review} disabled={!selectedInGroup || kept}>Review {selectedInGroup || group.fileCount} files</Button>{!group.archived && <Button icon="archive" onClick={onArchive} disabled={archiveBusy}>Archive conversation</Button>}</div><div className="detail-block"><div className="detail-row"><span>Root thread</span><strong className="copyable" title={group.rootId}>{shortId(group.rootId)} <Icon name="copy" size={14} /></strong></div><div className="detail-row"><span>Codex title</span><div className="title-value"><strong>{group.title}</strong><button className="title-edit" onClick={() => { setAliasDraft(group.title); setAliasEditing(true); }}>Rename</button></div></div>{aliasEditing && <div className="alias-editor"><input value={aliasDraft} onChange={event => setAliasDraft(event.target.value)} maxLength={120} autoFocus /><div><Button onClick={() => setAliasEditing(false)} disabled={aliasBusy}>Cancel</Button><Button variant="primary" onClick={saveAlias} disabled={aliasBusy}>{aliasBusy ? 'Saving...' : 'Save alias'}</Button></div>{aliasError && <small>{aliasError}</small>}</div>}<div className="detail-row"><span>First request</span><strong className="detail-prompt" title={group.prompt}>{promptPreview(group.prompt) || 'No user prompt found'}</strong></div><div className="detail-row"><span>Forked agents</span><div className="agent-list">{group.agents.length ? group.agents.map(agent => <span className="agent-chip" key={agent}><i />{agent}</span>) : <span className="muted">No named agents</span>}</div></div><div className="detail-row"><span>Last activity</span><strong>{formatDate(group.lastActivity)}</strong></div><div className="detail-row"><span>File count</span><strong>{group.fileCount} JSONL files</strong></div><div className="detail-row"><span>Location</span><strong className="path-text" title={group.cwd}>{group.cwd || 'Unknown'}</strong></div></div><ContextPreview group={group} context={context} loading={contextLoading} error={contextError} loadContext={loadContext} /><TranscriptSearch group={group} /><div className="forked-heading"><h2>Forked files <span>({group.fileCount})</span></h2><label><input type="checkbox" checked={selectedInGroup === group.fileCount} onChange={() => toggleGroup(group)} /> Select all</label></div><FileTable files={group.files} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /><div className="safe-zone"><div className="review-box"><Icon name={kept ? 'check' : 'unlock'} size={20} /><div><strong>{kept ? 'Conversation kept' : 'Review required'}</strong><span>{kept ? 'This root is excluded from the review queue.' : 'Review the selected files before they can move to the Recycle Bin.'}</span></div></div><label className="keep-toggle"><input type="checkbox" checked={kept} onChange={event => setKept(event.target.checked)} /><span><strong>Keep this conversation</strong><small>Exclude from deletion</small></span></label><Button variant="danger" icon="trash" onClick={review} disabled={!selectedInGroup || kept}>Move selected to Recycle Bin</Button><div className="selection-foot"><span>{selectedInGroup} of {group.fileCount} files selected</span><span>{formatBytes(group.files.filter(file => selectedPaths.has(file.path)).reduce((sum, file) => sum + file.sizeBytes, 0))}</span></div></div></aside>;
 }
 function AllFilesView({ files, selectedPaths, toggleFile, reveal, query, setQuery }) {
   const visible = files.filter(file => (file.name + ' ' + file.groupTitle + ' ' + file.agent + ' ' + file.rootId).toLowerCase().includes(query.toLowerCase()));
@@ -290,12 +290,14 @@ function StorageLocationsView({ onSaved }) {
 function EmptyState({ title, detail }) {
   return <div className="empty-state"><Icon name="archive" size={28} /><h2>{title}</h2><p>{detail}</p></div>;
 }
-function ReviewModal({ files, safety, onClose, onConfirm, busy, reviewBusy, removeCatalogRows, onCleanupChange }) {
+function ReviewModal({ files, safety, onClose, onConfirm, busy, reviewBusy, removeCatalogRows, onCleanupChange, archive = false }) {
+  archive = archive || Boolean(safety?.archivedRoot);
   const [value, setValue] = useState('');
   const total = files.reduce((sum, file) => sum + file.sizeBytes, 0);
   const blocked = !reviewBusy && safety && !safety.safe;
   const firstError = safety?.files?.find(file => !file.ok)?.error || safety?.catalog?.error;
-  return <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={onClose}><Icon name="x" /></button><div className="modal-icon"><Icon name="trash" size={24} /></div><h2>Move files to system trash?</h2><p>{files.length} selected JSONL files will be moved reversibly after a fresh safety check.</p><div className="modal-summary"><strong>{formatBytes(total)}</strong><span>{files.length} files</span></div><div className={'safety-check ' + (reviewBusy ? 'checking' : blocked ? 'blocked' : 'ready')}><Icon name={reviewBusy ? 'refresh' : blocked ? 'info' : 'check'} size={16} /><div><strong>{reviewBusy ? 'Checking file state...' : blocked ? 'Move blocked' : 'Preflight passed'}</strong><span>{reviewBusy ? 'Verifying the files have not changed since the scan.' : blocked ? firstError : 'The selected paths are inside the configured roots and match the latest scan.'}</span></div></div><div className="modal-file-list">{files.slice(0, 12).map(file => <div key={file.path}><span>{file.name}</span><span>{formatBytes(file.sizeBytes)}</span></div>)}{files.length > 12 && <div><span>+ {files.length - 12} more files</span><span /></div>}</div><label className="keep-toggle catalog-cleanup-toggle"><input type="checkbox" checked={removeCatalogRows} onChange={event => onCleanupChange(event.target.checked)} disabled={busy || reviewBusy} /><span><strong>Remove matching Catalog DB entries</strong><small>A SQLite backup is created before any matching rows are removed.</small></span></label>{safety?.catalog?.backupRequired && <div className="backup-note"><Icon name="database" size={14} />Catalog cleanup is armed; a backup will be created before the move.</div>}<label className="confirm-input"><span>Type MOVE to confirm</span><input value={value} onChange={event => setValue(event.target.value)} autoFocus /></label><div className="modal-actions"><Button onClick={onClose}>Cancel</Button><Button variant="danger" icon="trash" onClick={onConfirm} disabled={value !== 'MOVE' || busy || reviewBusy || blocked}>{busy ? 'Moving...' : 'Move selected'}</Button></div></div></div>;
+  const confirmation = archive ? 'ARCHIVE' : 'MOVE';
+  return <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={onClose}><Icon name="x" /></button><div className={'modal-icon ' + (archive ? 'archive-modal-icon' : '')}><Icon name={archive ? 'archive' : 'trash'} size={24} /></div><h2>{archive ? 'Archive conversation files?' : 'Move files to system trash?'}</h2><p>{archive ? `${files.length} selected JSONL files will move into the configured archive directory. Catalog DB entries stay intact because the transcripts remain available.` : `${files.length} selected JSONL files will be moved reversibly after a fresh safety check.`}</p><div className="modal-summary"><strong>{formatBytes(total)}</strong><span>{files.length} files</span></div><div className={'safety-check ' + (reviewBusy ? 'checking' : blocked ? 'blocked' : 'ready')}><Icon name={reviewBusy ? 'refresh' : blocked ? 'info' : 'check'} size={16} /><div><strong>{reviewBusy ? 'Checking file state...' : blocked ? (archive ? 'Archive blocked' : 'Move blocked') : 'Preflight passed'}</strong><span>{reviewBusy ? 'Verifying the files have not changed since the scan.' : blocked ? firstError : archive ? 'The active files are unchanged, inside the configured sessions directory, and have no archive destination collision.' : 'The selected paths are inside the configured roots and match the latest scan.'}</span></div></div><div className="modal-file-list">{files.slice(0, 12).map(file => <div key={file.path}><span>{file.name}</span><span>{formatBytes(file.sizeBytes)}</span></div>)}{files.length > 12 && <div><span>+ {files.length - 12} more files</span><span /></div>}</div>{!archive && <label className="keep-toggle catalog-cleanup-toggle"><input type="checkbox" checked={removeCatalogRows} onChange={event => onCleanupChange(event.target.checked)} disabled={busy || reviewBusy} /><span><strong>Remove matching Catalog DB entries</strong><small>A SQLite backup is created before any matching rows are removed.</small></span></label>}{!archive && safety?.catalog?.backupRequired && <div className="backup-note"><Icon name="database" size={14} />Catalog cleanup is armed; a backup will be created before the move.</div>}<label className="confirm-input"><span>Type {confirmation} to confirm</span><input value={value} onChange={event => setValue(event.target.value)} autoFocus /></label><div className="modal-actions"><Button onClick={onClose}>Cancel</Button><Button variant={archive ? 'primary' : 'danger'} icon={archive ? 'archive' : 'trash'} onClick={onConfirm} disabled={value !== confirmation || busy || reviewBusy || blocked}>{busy ? (archive ? 'Archiving...' : 'Moving...') : (archive ? 'Archive selected' : 'Move selected')}</Button></div></div></div>;
 }
 function App() {
   const [data, setData] = useState(null);
@@ -307,6 +309,7 @@ function App() {
   const [selectedPaths, setSelectedPaths] = useState(new Set());
   const [keptRoots, setKeptRoots] = useState(new Set());
   const [reviewFiles, setReviewFiles] = useState(null);
+  const [reviewMode, setReviewMode] = useState('recycle');
   const [recycleReview, setRecycleReview] = useState(null);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [removeCatalogRows, setRemoveCatalogRows] = useState(false);
@@ -356,6 +359,7 @@ function App() {
         setView('filters');
       } else if (event.key === 'Escape' && reviewFiles) {
         setReviewFiles(null);
+        setReviewMode('recycle');
         setRecycleReview(null);
         setRemoveCatalogRows(false);
       }
@@ -406,6 +410,7 @@ function App() {
   }
   async function prepareReview(files, cleanup) {
     setReviewFiles(files);
+    setReviewMode('recycle');
     setRemoveCatalogRows(cleanup);
     setRecycleReview(null);
     setReviewBusy(true);
@@ -418,9 +423,28 @@ function App() {
       setReviewBusy(false);
     }
   }
+  async function prepareArchive(files) {
+    setReviewFiles(files);
+    setReviewMode('archive');
+    setRemoveCatalogRows(false);
+    setRecycleReview({ safe: true, archivedRoot: true, files: [] });
+    setReviewBusy(true);
+    try {
+      setRecycleReview(await apiReviewArchive(files.map(file => file.path)));
+    } catch (reviewError) {
+      setReviewFiles(null);
+      setError(reviewError.message);
+    } finally {
+      setReviewBusy(false);
+    }
+  }
   function review() {
     const files = view === 'queue' ? selectedFiles : selectedGroup?.files.filter(file => selectedPaths.has(file.path)) || [];
     if (files.length) prepareReview(files, false);
+  }
+  function archiveConversation() {
+    if (activeArchived || !selectedGroup?.files.length) return;
+    prepareArchive(selectedGroup.files);
   }
   async function changeCleanup(value) {
     setRemoveCatalogRows(value);
@@ -438,11 +462,17 @@ function App() {
     if (!reviewFiles?.length || !recycleReview?.safe) return;
     setMoving(true);
     try {
-      const result = await apiRecycle(reviewFiles.map(file => file.path), removeCatalogRows);
+      const archive = reviewMode === 'archive';
+      const result = archive ? await apiArchive(reviewFiles.map(file => file.path)) : await apiRecycle(reviewFiles.map(file => file.path), removeCatalogRows);
       setSelectedPaths(current => new Set([...current].filter(filePath => !reviewFiles.some(file => file.path === filePath))));
       setReviewFiles(null);
+      setReviewMode('recycle');
       setRecycleReview(null);
-      setToast(result.catalog?.error ? 'Files moved; Catalog DB cleanup failed: ' + result.catalog.error : 'Moved ' + reviewFiles.length + ' files to system trash' + (result.catalog?.removed ? ' and removed ' + result.catalog.removed + ' Catalog DB entries.' : '') + (result.catalog?.backupPath ? ' Catalog DB backup created.' : '.'));
+      if (archive) {
+        const moved = result.result?.filter(item => item.ok).length || 0;
+        const failed = result.result?.length - moved || 0;
+        setToast(failed ? 'Archived ' + moved + ' files; ' + failed + ' could not be moved.' : 'Archived ' + moved + ' conversation files.');
+      } else setToast(result.catalog?.error ? 'Files moved; Catalog DB cleanup failed: ' + result.catalog.error : 'Moved ' + reviewFiles.length + ' files to system trash' + (result.catalog?.removed ? ' and removed ' + result.catalog.removed + ' Catalog DB entries.' : '') + (result.catalog?.backupPath ? ' Catalog DB backup created.' : '.'));
       await scan();
     } catch (moveError) {
       setError(moveError.message);
@@ -455,7 +485,7 @@ function App() {
     const contents = format === 'json' ? JSON.stringify({ exportedAt: new Date().toISOString(), stats: data.stats, groups: data.groups, archivedGroups: data.archivedGroups, files: data.files }, null, 2) : [['storage', 'archived', 'rootId', 'groupTitle', 'agent', 'name', 'sizeBytes', 'lastModified', 'path'].map(csvCell).join(','), ...data.files.map(file => [file.storage, file.archived, file.rootId, file.groupTitle, file.agent || 'Root', file.name, file.sizeBytes, file.lastModified, file.path].map(csvCell).join(','))].join('\n');
     try { const destination = await apiExport(format, contents, 'session-shelf-export.' + format); if (destination) setToast('Exported ' + destination.split(/[\\/]/).pop()); } catch (exportError) { setError(exportError.message); }
   }
-  const rootView = <><RootList groups={visibleGroups} selectedGroup={selectedGroup} selectedPaths={selectedPaths} setSelectedGroup={group => setSelectedRootKey(group.key || group.rootId)} toggleGroup={toggleGroup} query={rootQuery} setQuery={setRootQuery} sort={rootSort} setSort={setRootSort} archived={activeArchived} filters={filters} setFilters={setFilters} agents={availableAgents} /><Inspector group={selectedGroup} selectedPaths={selectedPaths} kept={selectedGroup ? keptRoots.has(selectedGroup.key || selectedGroup.rootId) : false} setKept={setKept} toggleFile={toggleFile} toggleGroup={toggleGroup} review={review} reveal={reveal} previewLimit={preferences.previewLimit} onAlias={saveAlias} /></>;
+  const rootView = <><RootList groups={visibleGroups} selectedGroup={selectedGroup} selectedPaths={selectedPaths} setSelectedGroup={group => setSelectedRootKey(group.key || group.rootId)} toggleGroup={toggleGroup} query={rootQuery} setQuery={setRootQuery} sort={rootSort} setSort={setRootSort} archived={activeArchived} filters={filters} setFilters={setFilters} agents={availableAgents} /><Inspector group={selectedGroup} selectedPaths={selectedPaths} kept={selectedGroup ? keptRoots.has(selectedGroup.key || selectedGroup.rootId) : false} setKept={setKept} toggleFile={toggleFile} toggleGroup={toggleGroup} review={review} reveal={reveal} previewLimit={preferences.previewLimit} onAlias={saveAlias} onArchive={archiveConversation} archiveBusy={moving} /></>;
   let content = rootView;
   if (view === 'overview') content = <Overview data={data} onExport={exportData} />;
   if (view === 'all') content = <AllFilesView files={data?.files || []} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} query={allQuery} setQuery={setAllQuery} />;

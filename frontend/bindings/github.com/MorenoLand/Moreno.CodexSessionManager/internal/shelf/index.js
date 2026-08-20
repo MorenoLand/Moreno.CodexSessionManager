@@ -8,6 +8,10 @@ export {
 };
 
 export {
+    ArchiveCheck,
+    ArchiveItem,
+    ArchiveResponse,
+    ArchiveReview,
     CatalogCheck,
     CatalogMutation,
     CatalogRow,

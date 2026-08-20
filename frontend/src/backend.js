@@ -6,7 +6,7 @@ function runningInWails() {
 
 async function wailsService() {
   if (!runningInWails()) return null;
-  wailsServicePromise ||= import('../bindings/github.com/denveous/session-shelf/internal/shelf/service.js');
+  wailsServicePromise ||= import('../bindings/github.com/MorenoLand/Moreno.CodexSessionManager/internal/shelf/service.js');
   return wailsServicePromise;
 }
 
@@ -111,6 +111,11 @@ export async function apiRecycle(paths, removeCatalogRows) {
   return service ? service.Recycle(paths, removeCatalogRows) : request('/api/recycle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
 }
 
+export async function apiArchive(paths) {
+  const service = await wailsService();
+  return service ? service.Archive(paths) : request('/api/archive', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths }) });
+}
+
 export async function apiSaveTitleAlias(rootId, title) {
   const service = await wailsService();
   if (service) return service.SaveTitleAlias(rootId, title);
@@ -125,4 +130,9 @@ export async function apiSaveTitleAlias(rootId, title) {
 export async function apiReviewRecycle(paths, removeCatalogRows) {
   const service = await wailsService();
   return service ? service.ReviewRecycle(paths, removeCatalogRows) : request('/api/recycle/review', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
+}
+
+export async function apiReviewArchive(paths) {
+  const service = await wailsService();
+  return service ? service.ReviewArchive(paths) : request('/api/archive/review', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths }) });
 }
