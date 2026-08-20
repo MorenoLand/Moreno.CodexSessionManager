@@ -4,7 +4,10 @@ body{overflow:hidden}
 .app-shell{height:100%;min-height:0;overflow:hidden}
 .app-body{min-height:0;flex:1;display:flex;overflow:hidden}
 .app-body>.sidebar,.app-body>.main-shell{min-height:0}
-.main-shell{min-height:0}
+.main-shell{min-height:0;overflow:hidden}
+.workspace{overflow:hidden}
+.center-pane{min-height:0;overflow:hidden}
+.inspector{min-height:0}
 .side-scroll,.root-list,.inspector,.file-table,.modal-file-list,.transcript-search-results{scrollbar-width:thin;scrollbar-color:#38577f #0a1323}
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-track{background:#0a1323}
