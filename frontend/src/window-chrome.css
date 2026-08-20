@@ -8,6 +8,7 @@ body{overflow:hidden}
 .workspace{overflow:hidden}
 .center-pane{min-height:0;overflow:hidden}
 .inspector{min-height:0}
+.inspector>.context-preview,.inspector>.file-table{flex:0 0 auto}
 .side-scroll,.root-list,.inspector,.file-table,.modal-file-list,.transcript-search-results{scrollbar-width:thin;scrollbar-color:#38577f #0a1323}
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-track{background:#0a1323}
