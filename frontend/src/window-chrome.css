@@ -22,7 +22,7 @@ body{overflow:hidden}
 .inspector-actions{display:flex;gap:8px;margin-bottom:20px}
 .inspector-actions>.button{min-width:0;flex:1}
 .inspector-actions>.button.primary{width:auto;margin-bottom:0}
-.agent-chip{cursor:pointer}
+.agent-chip{cursor:pointer;background:#0f1c30;color:#c8d6eb;font:inherit}
 .agent-chip:hover:not(:disabled){border-color:#6b9de8;background:#172b4e;color:#edf4ff}
 .agent-chip:disabled{cursor:default;opacity:.55}
 .agent-badge{cursor:pointer;text-align:left}
