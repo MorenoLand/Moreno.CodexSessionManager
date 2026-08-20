@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	_ "modernc.org/sqlite"
 )
 
@@ -135,6 +136,15 @@ type ContextPreview struct {
 	Messages  []ContextMessage `json:"messages"`
 	Limited   bool             `json:"limited"`
 	ReadError string           `json:"readError"`
+}
+
+type ContextSearch struct {
+	Path         string           `json:"path"`
+	Query        string           `json:"query"`
+	Matches      []ContextMessage `json:"matches"`
+	ScannedBytes int64            `json:"scannedBytes"`
+	Complete     bool             `json:"complete"`
+	ReadError    string           `json:"readError"`
 }
 
 type CatalogRow struct {
@@ -362,8 +372,8 @@ func (s *Service) SaveSettings(update StorageSettingsUpdate) (StorageSettings, e
 	if err != nil {
 		return StorageSettings{}, err
 	}
-	if samePath(currentRoot, archivedRoot) {
-		return StorageSettings{}, errors.New("Current and archived session directories must be different.")
+	if pathsOverlap(currentRoot, archivedRoot) {
+		return StorageSettings{}, errors.New("Current and archived session directories must not overlap.")
 	}
 	s.mu.Lock()
 	previous := StorageLocations{CurrentRoot: s.currentRoot, ArchivedRoot: s.archivedRoot, CatalogDB: s.catalogDB}
@@ -510,6 +520,78 @@ func (s *Service) GetScanStatus() ScanStatus {
 
 func samePath(left, right string) bool {
 	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
+}
+
+func pathsOverlap(left, right string) bool {
+	left, right = filepath.Clean(left), filepath.Clean(right)
+	if samePath(left, right) {
+		return true
+	}
+	contains := func(parent, child string) bool {
+		relative, err := filepath.Rel(parent, child)
+		return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
+	}
+	return contains(left, right) || contains(right, left)
+}
+
+func (s *Service) PickStoragePath(kind, initial string) (string, error) {
+	app := application.Get()
+	if app == nil {
+		return "", errors.New("Native storage dialogs require the Wails desktop runtime")
+	}
+	dialog := app.Dialog.OpenFile().SetTitle("Choose Session Shelf storage location").SetDirectory(initial)
+	if kind == "catalog" {
+		dialog.CanChooseDirectories(false).CanChooseFiles(true).AddFilter("SQLite databases", "*.db;*.sqlite;*.sqlite3").AddFilter("All files", "*.*")
+	} else if kind == "current" || kind == "archived" {
+		dialog.CanChooseDirectories(true).CanChooseFiles(false)
+	} else {
+		return "", errors.New("Unknown storage location kind")
+	}
+	selected, err := dialog.PromptForSingleSelection()
+	if err != nil || strings.TrimSpace(selected) == "" {
+		return "", nil
+	}
+	label := "Catalog DB path"
+	if kind == "current" {
+		label = "Current sessions directory"
+	} else if kind == "archived" {
+		label = "Archived sessions directory"
+	}
+	return absolutePath(selected, label)
+}
+
+func (s *Service) ExportSnapshot(format, contents, suggestedName string) (string, error) {
+	if format != "json" && format != "csv" {
+		return "", errors.New("Export format must be json or csv")
+	}
+	if len(contents) > 100*1024*1024 {
+		return "", errors.New("Export is larger than the 100 MiB safety limit")
+	}
+	app := application.Get()
+	if app == nil {
+		return "", errors.New("Native export dialogs require the Wails desktop runtime")
+	}
+	filename := filepath.Base(strings.TrimSpace(suggestedName))
+	if filename == "." || filename == "" {
+		filename = "session-shelf-export." + format
+	}
+	if filepath.Ext(filename) == "" {
+		filename += "." + format
+	}
+	dialog := app.Dialog.SaveFile().SetFilename(filename)
+	if format == "json" {
+		dialog.AddFilter("JSON", "*.json")
+	} else {
+		dialog.AddFilter("CSV", "*.csv")
+	}
+	selected, err := dialog.PromptForSingleSelection()
+	if err != nil || strings.TrimSpace(selected) == "" {
+		return "", nil
+	}
+	if err := writeAtomic(selected, []byte(contents)); err != nil {
+		return "", err
+	}
+	return selected, nil
 }
 
 func (s *Service) Scan(includeArchived bool) (ScanResult, error) {
@@ -1192,6 +1274,57 @@ func (s *Service) Preview(filename string, limit int) (ContextPreview, error) {
 
 func lineNumberReachedLimit(preview ContextPreview, readBytes int) bool {
 	return len(preview.Messages) > 0 && readBytes >= 8*1024*1024
+}
+
+func (s *Service) SearchContext(filename, query string, limit int) (ContextSearch, error) {
+	if !s.isWithinScanRoot(filename) {
+		return ContextSearch{}, errors.New("Path is outside a configured sessions directory or is not JSONL")
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ContextSearch{Path: filename, Query: query, Matches: []ContextMessage{}, Complete: true}, nil
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	result := ContextSearch{Path: filename, Query: query, Matches: []ContextMessage{}}
+	file, err := os.Open(filename)
+	if err != nil {
+		result.ReadError = err.Error()
+		return result, nil
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
+	lowerQuery := strings.ToLower(query)
+	for scanner.Scan() {
+		result.ScannedBytes += int64(len(scanner.Bytes()))
+		var record any
+		if json.Unmarshal(scanner.Bytes(), &record) != nil {
+			continue
+		}
+		message := extractContextMessage(record)
+		if message.Text == "" || !strings.Contains(strings.ToLower(message.Text), lowerQuery) {
+			continue
+		}
+		if len([]rune(message.Text)) > 720 {
+			message.Text = string([]rune(message.Text)[:720]) + "…"
+		}
+		result.Matches = append(result.Matches, message)
+		if len(result.Matches) >= limit {
+			result.Complete = false
+			return result, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		result.ReadError = err.Error()
+	} else {
+		result.Complete = true
+	}
+	return result, nil
 }
 
 func extractContextMessage(record any) ContextMessage {

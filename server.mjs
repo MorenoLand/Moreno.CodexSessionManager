@@ -43,6 +43,14 @@ function absoluteStoragePath(value, label) {
   return path.resolve(text);
 }
 
+function pathsOverlap(left, right) {
+  const normalize = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
+  const isWithin = (parent, child) => { const relative = path.relative(parent, child); return relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); };
+  const first = normalize(left);
+  const second = normalize(right);
+  return first === second || isWithin(first, second) || isWithin(second, first);
+}
+
 function getStorageSettings() {
   return { currentRoot: rootDir, archivedRoot: archivedRootDir, catalogDb: catalogDbPath, settingsPath, defaults: defaultStorageConfig };
 }
@@ -162,6 +170,43 @@ async function readContext(filePath, limit = 6) {
     });
   });
   return { name, path: filePath, messages, limited, readError };
+}
+
+async function searchContext(filePath, query, limit = 20) {
+  query = String(query || '').trim();
+  if (!query) return { path: filePath, query, matches: [], scannedBytes: 0, complete: true, readError: '' };
+  limit = Math.min(50, Math.max(1, Number(limit) || 20));
+  const matches = [];
+  const lowerQuery = query.toLowerCase();
+  let scannedBytes = 0;
+  let readError = '';
+  let complete = false;
+  let finished = false;
+  await new Promise((resolve) => {
+    const input = createReadStream(filePath, { encoding: 'utf8' });
+    const lines = createInterface({ input, crlfDelay: Infinity });
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      lines.close();
+      input.destroy();
+      resolve();
+    };
+    lines.on('line', (line) => {
+      if (finished) return;
+      scannedBytes += Buffer.byteLength(line, 'utf8');
+      try {
+        const message = extractContextMessage(JSON.parse(line));
+        if (!message?.text || !message.text.toLowerCase().includes(lowerQuery)) return;
+        const text = message.text.length > 720 ? `${message.text.slice(0, 720).trimEnd()}…` : message.text;
+        matches.push({ role: message.role, text });
+        if (matches.length >= limit) finish();
+      } catch {}
+    });
+    lines.on('close', () => { if (!finished) { complete = true; resolve(); } });
+    input.on('error', (error) => { readError = error.message; finish(); });
+  });
+  return { path: filePath, query, matches, scannedBytes, complete, readError };
 }
 
 function runSqlite(args, input = '') {
@@ -629,6 +674,7 @@ const server = http.createServer(async (request, response) => {
       } catch (error) {
         return sendJson(response, 400, { error: error.message });
       }
+      if (pathsOverlap(next.currentRoot, next.archivedRoot)) return sendJson(response, 400, { error: 'Current and archived session directories must not overlap.' });
       const previous = { currentRoot: rootDir, archivedRoot: archivedRootDir, catalogDb: catalogDbPath };
       try {
         rootDir = next.currentRoot;
@@ -653,6 +699,13 @@ const server = http.createServer(async (request, response) => {
       const requestedLimit = Number(url.searchParams.get('limit') || 6);
       if (!isWithinScanRoot(filePath)) return sendJson(response, 400, { error: 'Path is outside a configured sessions directory or is not JSONL' });
       return sendJson(response, 200, await readContext(filePath, Number.isFinite(requestedLimit) ? Math.min(8, Math.max(1, requestedLimit)) : 6));
+    }
+    if (request.method === 'GET' && url.pathname === '/api/context/search') {
+      const filePath = String(url.searchParams.get('path') || '');
+      const query = String(url.searchParams.get('query') || '');
+      const requestedLimit = Number(url.searchParams.get('limit') || 20);
+      if (!isWithinScanRoot(filePath)) return sendJson(response, 400, { error: 'Path is outside a configured sessions directory or is not JSONL' });
+      return sendJson(response, 200, await searchContext(filePath, query, Number.isFinite(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 20));
     }
     if (request.method === 'POST' && url.pathname === '/api/catalog/remove') {
       const payload = JSON.parse(await readBody(request));

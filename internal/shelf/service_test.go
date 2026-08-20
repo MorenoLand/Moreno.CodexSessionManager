@@ -152,3 +152,29 @@ func TestScanUsesMetadataIndexAndTitleAlias(t *testing.T) {
 		t.Fatalf("expected alias to override title: %+v", third.Groups)
 	}
 }
+
+func TestSaveSettingsRejectsOverlappingRoots(t *testing.T) {
+	root := t.TempDir()
+	service := &Service{currentRoot: root, archivedRoot: filepath.Join(root, "archive"), catalogDB: filepath.Join(root, "catalog.db"), settingsPath: filepath.Join(root, "settings.json"), defaults: StorageLocations{CurrentRoot: root, ArchivedRoot: filepath.Join(root, "archive"), CatalogDB: filepath.Join(root, "catalog.db")}}
+	_, err := service.SaveSettings(StorageSettingsUpdate{CurrentRoot: root, ArchivedRoot: filepath.Join(root, "archive"), CatalogDB: filepath.Join(root, "catalog.db")})
+	if err == nil || !strings.Contains(err.Error(), "must not overlap") {
+		t.Fatalf("expected overlapping roots to be rejected, got %v", err)
+	}
+}
+
+func TestSearchContextFindsMatchingMessages(t *testing.T) {
+	root := t.TempDir()
+	service := testService(t, root, filepath.Join(t.TempDir(), "archive"), filepath.Join(t.TempDir(), "catalog.db"))
+	filename := filepath.Join(root, "rollout-2026-08-20-01a01cc5-38a6-7431-bb4c-965672f007f6.jsonl")
+	content := "{\"type\":\"response_item\",\"payload\":{\"role\":\"user\",\"content\":\"Find the Dibblerland title\"}}\n{\"type\":\"response_item\",\"payload\":{\"role\":\"assistant\",\"content\":\"I found the title\"}}\n"
+	if err := os.WriteFile(filename, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.SearchContext(filename, "dibblerland", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Complete || len(result.Matches) != 1 || result.Matches[0].Role != "user" {
+		t.Fatalf("expected one matching user message: %+v", result)
+	}
+}

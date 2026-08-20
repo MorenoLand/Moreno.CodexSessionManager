@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './context.css';
 import './file-table.css';
-import { apiCancelScan, apiCatalog, apiContext, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSettings } from './backend.js';
+import { apiCancelScan, apiCatalog, apiContext, apiExport, apiPickStorage, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSearchContext, apiSettings } from './backend.js';
 
 const icons = {
   archive: 'M4 7h16M5 7v12h14V7M8 4h8l1 3H7l1-3',
@@ -54,6 +54,7 @@ function promptPreview(value) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > 280 ? text.slice(0, 277).trimEnd() + '…' : text;
 }
+function csvCell(value) { return '"' + String(value ?? '').replaceAll('"', '""') + '"'; }
 const defaultPreferences = { includeArchived: true, previewLimit: 6 };
 const defaultFilters = { minGiB: '', minFiles: '', agent: 'all', forkedOnly: false };
 function loadPreferences() {
@@ -62,6 +63,15 @@ function loadPreferences() {
     const previewLimit = Math.min(8, Math.max(1, Number(saved.previewLimit) || defaultPreferences.previewLimit));
     return { includeArchived: saved.includeArchived !== false, previewLimit };
   } catch { return defaultPreferences; }
+}
+function loadFilters() {
+  try { return { ...defaultFilters, ...JSON.parse(localStorage.getItem('session-shelf.filters') || '{}') }; } catch { return defaultFilters; }
+}
+function loadSavedViews() {
+  try { const saved = JSON.parse(localStorage.getItem('session-shelf.saved-views') || '[]'); return Array.isArray(saved) ? saved.filter(view => view && view.id && view.name && view.filters) : []; } catch { return []; }
+}
+function loadStored(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
 }
 function FilterControls({ filters, setFilters, agents, compact = false }) {
   const update = (key, value) => setFilters(current => ({ ...current, [key]: value }));
@@ -106,6 +116,19 @@ function ContextPreview({ group, context, loading, error, loadContext }) {
   const messages = active ? context.messages : [];
   return <section className="context-preview"><div className="context-window-bar"><div className="context-window-ident"><span className="context-window-icon"><Icon name="message" size={15} /></span><div><strong>{group.title}</strong><span>{shortId(group.rootId)} · stored transcript</span></div></div><button className="context-action" onClick={() => loadContext(group.rootPath)} disabled={loading}><Icon name="message" size={15} />{loading && active ? 'Reading...' : active ? 'Refresh' : 'Preview messages'}</button></div>{loading && active ? <div className="context-state">Reading the first messages...</div> : error && active ? <div className="context-state context-error">{error}</div> : active && messages.length ? <div className="context-thread">{messages.map((message, index) => <article className={'context-message ' + message.role} key={message.role + '-' + index}><div className="context-message-meta"><span className={'context-avatar ' + message.role}>{message.role === 'user' ? 'Y' : 'C'}</span><strong>{message.role === 'user' ? 'You' : 'Codex'}</strong><span className="context-message-index">{index + 1}/{messages.length}</span></div><div className="context-bubble"><p>{message.text}</p></div></article>)}</div> : active ? <div className="context-state">No user or assistant messages were found in the preview window.</div> : <div className="context-state">Load a small preview before deciding whether this root is worth keeping.</div>}{active && !loading && messages.length > 0 && <div className="context-note">{context.limited ? 'Showing the first ' + messages.length + ' messages; the transcript stays untouched.' : 'Reached the end of this transcript preview.'}</div>}</section>;
 }
+function TranscriptSearch({ group }) {
+  const [query, setQuery] = useState('');
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setQuery(''); setResult(null); }, [group?.rootId]);
+  async function search() {
+    const value = query.trim();
+    if (!value) { setResult(null); return; }
+    setBusy(true);
+    try { setResult(await apiSearchContext(group.rootPath, value, 20)); } catch (error) { setResult({ query: value, matches: [], complete: true, readError: error.message }); } finally { setBusy(false); }
+  }
+  return <section className="transcript-search"><div className="transcript-search-head"><strong>Search transcript</strong><span>Searches the selected root without editing it.</span></div><div className="transcript-search-form"><input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') search(); }} placeholder="Search messages..." /><Button onClick={search} disabled={busy || !query.trim()}>{busy ? 'Searching...' : 'Search'}</Button></div>{result && <div className="transcript-search-results">{result.readError ? <p className="context-error">{result.readError}</p> : result.matches.length ? result.matches.map((message, index) => <article className={'context-message ' + message.role} key={message.role + '-' + index}><div className="context-message-meta"><strong>{message.role === 'user' ? 'You' : 'Codex'}</strong><span>{index + 1}/{result.matches.length}</span></div><div className="context-bubble"><p>{message.text}</p></div></article>) : <p className="context-state">No matching messages.</p>}{result.matches.length > 0 && <small>{result.complete ? 'Search reached the end of the transcript.' : 'Showing the first 20 matches.'}</small>}</div>}</section>;
+}
 function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGroup, review, reveal, previewLimit, onAlias }) {
   const [context, setContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
@@ -136,7 +159,7 @@ function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGrou
   }
   if (!group) return <aside className="inspector empty-inspector"><div className="empty-illustration"><Icon name="branch" size={30} /></div><h2>Choose a conversation root</h2><p>Select a group to see its forked files, lineage, and reclaimable space.</p></aside>;
   const selectedInGroup = group.files.filter(file => selectedPaths.has(file.path)).length;
-  return <aside className="inspector"><div className="inspector-top"><div><h1>{group.title}</h1><p className="inspector-size">{formatGiB(group.sizeBytes)} <span>reclaimable</span></p></div><span className="file-count"><strong>{group.fileCount}</strong><small>files</small></span></div><Button variant="primary" icon="archive" onClick={review} disabled={!selectedInGroup || kept}>Review {selectedInGroup || group.fileCount} files</Button><div className="detail-block"><div className="detail-row"><span>Root thread</span><strong className="copyable" title={group.rootId}>{shortId(group.rootId)} <Icon name="copy" size={14} /></strong></div><div className="detail-row"><span>Codex title</span><div className="title-value"><strong>{group.title}</strong><button className="title-edit" onClick={() => { setAliasDraft(group.title); setAliasEditing(true); }}>Rename</button></div></div>{aliasEditing && <div className="alias-editor"><input value={aliasDraft} onChange={event => setAliasDraft(event.target.value)} maxLength={120} autoFocus /><div><Button onClick={() => setAliasEditing(false)} disabled={aliasBusy}>Cancel</Button><Button variant="primary" onClick={saveAlias} disabled={aliasBusy}>{aliasBusy ? 'Saving...' : 'Save alias'}</Button></div>{aliasError && <small>{aliasError}</small>}</div>}<div className="detail-row"><span>First request</span><strong className="detail-prompt" title={group.prompt}>{promptPreview(group.prompt) || 'No user prompt found'}</strong></div><div className="detail-row"><span>Forked agents</span><div className="agent-list">{group.agents.length ? group.agents.map(agent => <span className="agent-chip" key={agent}><i />{agent}</span>) : <span className="muted">No named agents</span>}</div></div><div className="detail-row"><span>Last activity</span><strong>{formatDate(group.lastActivity)}</strong></div><div className="detail-row"><span>File count</span><strong>{group.fileCount} JSONL files</strong></div><div className="detail-row"><span>Location</span><strong className="path-text" title={group.cwd}>{group.cwd || 'Unknown'}</strong></div></div><ContextPreview group={group} context={context} loading={contextLoading} error={contextError} loadContext={loadContext} /><div className="forked-heading"><h2>Forked files <span>({group.fileCount})</span></h2><label><input type="checkbox" checked={selectedInGroup === group.fileCount} onChange={() => toggleGroup(group)} /> Select all</label></div><FileTable files={group.files} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /><div className="safe-zone"><div className="review-box"><Icon name={kept ? 'check' : 'unlock'} size={20} /><div><strong>{kept ? 'Conversation kept' : 'Review required'}</strong><span>{kept ? 'This root is excluded from the review queue.' : 'Review the selected files before they can move to the Recycle Bin.'}</span></div></div><label className="keep-toggle"><input type="checkbox" checked={kept} onChange={event => setKept(event.target.checked)} /><span><strong>Keep this conversation</strong><small>Exclude from deletion</small></span></label><Button variant="danger" icon="trash" onClick={review} disabled={!selectedInGroup || kept}>Move selected to Recycle Bin</Button><div className="selection-foot"><span>{selectedInGroup} of {group.fileCount} files selected</span><span>{formatBytes(group.files.filter(file => selectedPaths.has(file.path)).reduce((sum, file) => sum + file.sizeBytes, 0))}</span></div></div></aside>;
+  return <aside className="inspector"><div className="inspector-top"><div><h1>{group.title}</h1><p className="inspector-size">{formatGiB(group.sizeBytes)} <span>reclaimable</span></p></div><span className="file-count"><strong>{group.fileCount}</strong><small>files</small></span></div><Button variant="primary" icon="archive" onClick={review} disabled={!selectedInGroup || kept}>Review {selectedInGroup || group.fileCount} files</Button><div className="detail-block"><div className="detail-row"><span>Root thread</span><strong className="copyable" title={group.rootId}>{shortId(group.rootId)} <Icon name="copy" size={14} /></strong></div><div className="detail-row"><span>Codex title</span><div className="title-value"><strong>{group.title}</strong><button className="title-edit" onClick={() => { setAliasDraft(group.title); setAliasEditing(true); }}>Rename</button></div></div>{aliasEditing && <div className="alias-editor"><input value={aliasDraft} onChange={event => setAliasDraft(event.target.value)} maxLength={120} autoFocus /><div><Button onClick={() => setAliasEditing(false)} disabled={aliasBusy}>Cancel</Button><Button variant="primary" onClick={saveAlias} disabled={aliasBusy}>{aliasBusy ? 'Saving...' : 'Save alias'}</Button></div>{aliasError && <small>{aliasError}</small>}</div>}<div className="detail-row"><span>First request</span><strong className="detail-prompt" title={group.prompt}>{promptPreview(group.prompt) || 'No user prompt found'}</strong></div><div className="detail-row"><span>Forked agents</span><div className="agent-list">{group.agents.length ? group.agents.map(agent => <span className="agent-chip" key={agent}><i />{agent}</span>) : <span className="muted">No named agents</span>}</div></div><div className="detail-row"><span>Last activity</span><strong>{formatDate(group.lastActivity)}</strong></div><div className="detail-row"><span>File count</span><strong>{group.fileCount} JSONL files</strong></div><div className="detail-row"><span>Location</span><strong className="path-text" title={group.cwd}>{group.cwd || 'Unknown'}</strong></div></div><ContextPreview group={group} context={context} loading={contextLoading} error={contextError} loadContext={loadContext} /><TranscriptSearch group={group} /><div className="forked-heading"><h2>Forked files <span>({group.fileCount})</span></h2><label><input type="checkbox" checked={selectedInGroup === group.fileCount} onChange={() => toggleGroup(group)} /> Select all</label></div><FileTable files={group.files} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /><div className="safe-zone"><div className="review-box"><Icon name={kept ? 'check' : 'unlock'} size={20} /><div><strong>{kept ? 'Conversation kept' : 'Review required'}</strong><span>{kept ? 'This root is excluded from the review queue.' : 'Review the selected files before they can move to the Recycle Bin.'}</span></div></div><label className="keep-toggle"><input type="checkbox" checked={kept} onChange={event => setKept(event.target.checked)} /><span><strong>Keep this conversation</strong><small>Exclude from deletion</small></span></label><Button variant="danger" icon="trash" onClick={review} disabled={!selectedInGroup || kept}>Move selected to Recycle Bin</Button><div className="selection-foot"><span>{selectedInGroup} of {group.fileCount} files selected</span><span>{formatBytes(group.files.filter(file => selectedPaths.has(file.path)).reduce((sum, file) => sum + file.sizeBytes, 0))}</span></div></div></aside>;
 }
 function AllFilesView({ files, selectedPaths, toggleFile, reveal, query, setQuery }) {
   const visible = files.filter(file => (file.name + ' ' + file.groupTitle + ' ' + file.agent + ' ' + file.rootId).toLowerCase().includes(query.toLowerCase()));
@@ -187,9 +210,9 @@ function CatalogView() {
   }
   return <><section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Catalog DB</h1><p>Local thread catalog. Orphaned rows have no matching transcript file.</p><p className="path-text">{catalog?.dbPath || 'Loading...'}</p></div><Button icon="refresh" onClick={load} disabled={busy}>Refresh</Button></div>{error && <div className="error-banner">{error}</div>}{catalog?.error && <div className="error-banner">{catalog.error}</div>}<div className="file-table catalog-table"><div className="file-table-head">{headers.map(([key, label]) => <button className="catalog-sort" key={key} onClick={() => toggle(key)}>{label}<span>{sort.key === key ? sort.direction === 'asc' ? '▲' : '▼' : '↕'}</span></button>)}<span /></div>{rows.map(row => <div className={'file-row ' + (row.orphaned ? 'selected' : '')} key={row.host_id + '-' + row.thread_id}><span>{row.orphaned ? 'ORPHANED' : 'OK'}</span><span>{row.host_id}</span><span title={row.display_title}>{row.display_title}</span><span>{row.thread_id}</span><span>{row.source_kind || row.thread_source || 'local'}</span><button className="reveal-button" disabled={!row.orphaned || busy} onClick={() => { setConfirmation(''); setPending(row); }}><Icon name="trash" size={15} /></button></div>)}</div></section>{pending && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setPending(null)}><Icon name="x" /></button><div className="modal-icon"><Icon name="trash" size={24} /></div><h2>Remove orphaned catalog row?</h2><p>This removes only the metadata row. It does not modify any transcript.</p><div className="modal-summary"><strong>{pending.display_title || 'Untitled'}</strong><span className="catalog-modal-id">{pending.thread_id}</span></div><label className="confirm-input"><span>Type REMOVE to confirm</span><input value={confirmation} onChange={event => setConfirmation(event.target.value)} autoFocus /></label><div className="modal-actions"><Button onClick={() => setPending(null)}>Cancel</Button><Button variant="danger" icon="trash" onClick={remove} disabled={confirmation !== 'REMOVE' || busy}>{busy ? 'Removing...' : 'Remove catalog row'}</Button></div></div></div>}</>;
 }
-function Overview({ data }) {
+function Overview({ data, onExport }) {
   const stats = data?.stats;
-  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Overview</h1><p>Storage summary for your local Codex session data.</p></div><span>{data ? formatDate(data.scannedAt) : 'Scanning...'}</span></div><div className="detail-block"><div className="detail-row"><span>Total storage</span><strong>{stats ? formatGiB(stats.totalBytes) : '—'}</strong></div><div className="detail-row"><span>All session roots</span><strong>{stats?.groupCount ?? '—'}</strong></div><div className="detail-row"><span>JSONL files</span><strong>{stats?.fileCount ?? '—'}</strong></div><div className="detail-row"><span>Current sessions</span><strong>{data?.currentStats ? data.currentStats.groupCount + ' roots / ' + data.currentStats.fileCount + ' files' : '—'}</strong></div><div className="detail-row"><span>Archived sessions</span><strong>{data?.archivedStats ? data.archivedStats.groupCount + ' roots / ' + data.archivedStats.fileCount + ' files' : '—'}</strong></div><div className="detail-row"><span>Sessions directory</span><strong className="path-text">{data?.root || 'Detecting...'}</strong></div><div className="detail-row"><span>Archive directory</span><strong className="path-text">{data?.archivedRoot || 'Detecting...'}</strong></div></div></section>;
+  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Overview</h1><p>Storage summary for your local Codex session data.</p></div><div className="heading-actions"><span>{data ? formatDate(data.scannedAt) : 'Scanning...'}</span><Button onClick={() => onExport('json')} disabled={!data}>Export JSON</Button><Button onClick={() => onExport('csv')} disabled={!data}>Export CSV</Button></div></div><div className="detail-block"><div className="detail-row"><span>Total storage</span><strong>{stats ? formatGiB(stats.totalBytes) : '—'}</strong></div><div className="detail-row"><span>All session roots</span><strong>{stats?.groupCount ?? '—'}</strong></div><div className="detail-row"><span>JSONL files</span><strong>{stats?.fileCount ?? '—'}</strong></div><div className="detail-row"><span>Current sessions</span><strong>{data?.currentStats ? data.currentStats.groupCount + ' roots / ' + data.currentStats.fileCount + ' files' : '—'}</strong></div><div className="detail-row"><span>Archived sessions</span><strong>{data?.archivedStats ? data.archivedStats.groupCount + ' roots / ' + data.archivedStats.fileCount + ' files' : '—'}</strong></div><div className="detail-row"><span>Sessions directory</span><strong className="path-text">{data?.root || 'Detecting...'}</strong></div><div className="detail-row"><span>Archive directory</span><strong className="path-text">{data?.archivedRoot || 'Detecting...'}</strong></div></div></section>;
 }
 function RecycleView() {
   return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Recycle Bin</h1><p>Session Shelf sends selected JSONL files to the operating system trash.</p></div></div><div className="empty-state"><Icon name="trash" size={28} /><h2>Nothing to review here</h2><p>Use Active sessions or Archived sessions to inspect files before moving them. Recovery remains available through the operating system trash.</p></div></section>;
@@ -199,7 +222,22 @@ function PreferencesView({ preferences, updatePreferences }) {
 }
 function FiltersView({ filters, setFilters, agents }) {
   const activeCount = [filters.minGiB, filters.minFiles, filters.agent !== 'all' ? filters.agent : '', filters.forkedOnly ? 'forked' : ''].filter(Boolean).length;
-  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Filters</h1><p>These filters apply to both Active sessions and Archived sessions.</p></div><span>{activeCount ? activeCount + ' active' : 'No filters'}</span></div><div className="settings-card"><FilterControls filters={filters} setFilters={setFilters} agents={agents} /></div><div className="settings-note"><Icon name="filter" size={16} /><span>Search text and filters combine; sorting still comes from the table headers or the sort menu.</span></div></section>;
+  const [savedViews, setSavedViews] = useState(loadSavedViews);
+  const [viewName, setViewName] = useState('');
+  function saveView() {
+    const name = viewName.trim();
+    if (!name) return;
+    const next = [...savedViews.filter(view => view.name.toLowerCase() !== name.toLowerCase()), { id: Date.now().toString(36), name, filters }];
+    setSavedViews(next);
+    localStorage.setItem('session-shelf.saved-views', JSON.stringify(next));
+    setViewName('');
+  }
+  function deleteView(id) {
+    const next = savedViews.filter(view => view.id !== id);
+    setSavedViews(next);
+    localStorage.setItem('session-shelf.saved-views', JSON.stringify(next));
+  }
+  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Filters</h1><p>These filters apply to both Active sessions and Archived sessions.</p></div><span>{activeCount ? activeCount + ' active' : 'No filters'}</span></div><div className="settings-card"><FilterControls filters={filters} setFilters={setFilters} agents={agents} /></div><div className="settings-card saved-view-card"><div><strong>Saved filter views</strong><small>Save named filter presets locally for repeat cleanup reviews.</small></div><div className="saved-view-create"><input value={viewName} onChange={event => setViewName(event.target.value)} placeholder="View name" onKeyDown={event => { if (event.key === 'Enter') saveView(); }} /><Button onClick={saveView} disabled={!viewName.trim()}>Save view</Button></div>{savedViews.length ? <div className="saved-view-list">{savedViews.map(view => <div className="saved-view-row" key={view.id}><button onClick={() => setFilters({ ...defaultFilters, ...view.filters })}>{view.name}</button><button onClick={() => deleteView(view.id)} aria-label={'Delete saved view ' + view.name}><Icon name="x" size={14} /></button></div>)}</div> : <small className="muted">No saved views.</small>}</div><div className="settings-note"><Icon name="filter" size={16} /><span>Search text and filters combine; sorting still comes from the table headers or the sort menu.</span></div></section>;
 }
 function StorageLocationsView({ onSaved }) {
   const [settings, setSettings] = useState(null);
@@ -210,6 +248,7 @@ function StorageLocationsView({ onSaved }) {
   const [notice, setNotice] = useState('');
   useEffect(() => { apiSettings().then(result => { setSettings(result); setDefaults(result.defaults); setForm({ currentRoot: result.currentRoot, archivedRoot: result.archivedRoot, catalogDb: result.catalogDb }); }).catch(loadError => setError(loadError.message)); }, []);
   function update(key, value) { setForm(current => ({ ...current, [key]: value })); setNotice(''); }
+  async function pick(kind, key) { try { const selected = await apiPickStorage(kind, form[key]); if (selected) update(key, selected); } catch (pickError) { setError(pickError.message); } }
   async function save() {
     setBusy(true); setError(''); setNotice('');
     try {
@@ -220,7 +259,7 @@ function StorageLocationsView({ onSaved }) {
     } catch (saveError) { setError(saveError.message); } finally { setBusy(false); }
   }
   if (!settings) return <section className="center-pane full-pane"><div className="empty-state">{error ? <><Icon name="info" size={28} /><h2>Storage settings unavailable</h2><p>{error}</p></> : <><Icon name="folder" size={28} /><h2>Loading storage settings...</h2></>}</div></section>;
-  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Storage locations</h1><p>These absolute paths control what the server scans and which Catalog DB it reads.</p></div><span>Config: {settings.settingsPath}</span></div>{error && <div className="error-banner">{error}</div>}{notice && <div className="settings-success"><Icon name="check" size={16} />{notice}</div>}<div className="settings-card location-card"><label className="settings-field"><span>Current sessions directory</span><input className="settings-input" value={form.currentRoot} onChange={event => update('currentRoot', event.target.value)} spellCheck="false" /></label><label className="settings-field"><span>Archived sessions directory</span><input className="settings-input" value={form.archivedRoot} onChange={event => update('archivedRoot', event.target.value)} spellCheck="false" /></label><label className="settings-field"><span>Catalog DB path</span><input className="settings-input" value={form.catalogDb} onChange={event => update('catalogDb', event.target.value)} spellCheck="false" /></label><div className="settings-actions"><Button onClick={() => setForm({ currentRoot: defaults.currentRoot, archivedRoot: defaults.archivedRoot, catalogDb: defaults.catalogDb })} disabled={busy}>Reset defaults</Button><Button variant="primary" icon="check" onClick={save} disabled={busy}>{busy ? 'Saving and scanning...' : 'Save & rescan'}</Button></div></div></section>;
+  return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Storage locations</h1><p>These absolute paths control what the server scans and which Catalog DB it reads.</p></div><span>Config: {settings.settingsPath}</span></div>{error && <div className="error-banner">{error}</div>}{notice && <div className="settings-success"><Icon name="check" size={16} />{notice}</div>}<div className="settings-card location-card"><label className="settings-field"><span>Current sessions directory</span><div className="path-input"><input className="settings-input" value={form.currentRoot} onChange={event => update('currentRoot', event.target.value)} spellCheck="false" /><button className="path-browse" onClick={() => pick('current', 'currentRoot')} disabled={busy}>Browse</button></div></label><label className="settings-field"><span>Archived sessions directory</span><div className="path-input"><input className="settings-input" value={form.archivedRoot} onChange={event => update('archivedRoot', event.target.value)} spellCheck="false" /><button className="path-browse" onClick={() => pick('archived', 'archivedRoot')} disabled={busy}>Browse</button></div></label><label className="settings-field"><span>Catalog DB path</span><div className="path-input"><input className="settings-input" value={form.catalogDb} onChange={event => update('catalogDb', event.target.value)} spellCheck="false" /><button className="path-browse" onClick={() => pick('catalog', 'catalogDb')} disabled={busy}>Browse</button></div></label><div className="settings-actions"><Button onClick={() => setForm({ currentRoot: defaults.currentRoot, archivedRoot: defaults.archivedRoot, catalogDb: defaults.catalogDb })} disabled={busy}>Reset defaults</Button><Button variant="primary" icon="check" onClick={save} disabled={busy}>{busy ? 'Saving and scanning...' : 'Save & rescan'}</Button></div></div></section>;
 }
 function EmptyState({ title, detail }) {
   return <div className="empty-state"><Icon name="archive" size={28} /><h2>{title}</h2><p>{detail}</p></div>;
@@ -247,11 +286,11 @@ function App() {
   const [removeCatalogRows, setRemoveCatalogRows] = useState(false);
   const [moving, setMoving] = useState(false);
   const [toast, setToast] = useState('');
-  const [rootQuery, setRootQuery] = useState('');
-  const [rootSort, setRootSort] = useState({ key: 'sizeBytes', direction: 'desc' });
-  const [allQuery, setAllQuery] = useState('');
+  const [rootQuery, setRootQuery] = useState(() => localStorage.getItem('session-shelf.root-query') || '');
+  const [rootSort, setRootSort] = useState(() => loadStored('session-shelf.root-sort', { key: 'sizeBytes', direction: 'desc' }));
+  const [allQuery, setAllQuery] = useState(() => localStorage.getItem('session-shelf.all-query') || '');
   const [preferences, setPreferences] = useState(loadPreferences);
-  const [filters, setFilters] = useState(defaultFilters);
+  const [filters, setFilters] = useState(loadFilters);
   const setView = useCallback(nextView => { setViewState(nextView); localStorage.setItem('session-shelf.view', nextView); }, []);
   const updatePreferences = useCallback(patch => { setPreferences(current => { const next = { ...current, ...patch }; localStorage.setItem('session-shelf.preferences', JSON.stringify(next)); return next; }); }, []);
   const scan = useCallback(async () => {
@@ -268,6 +307,10 @@ function App() {
   }, [preferences.includeArchived]);
   useEffect(() => { scan(); }, [scan]);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(''), 5000); return () => clearTimeout(timer); }, [toast]);
+  useEffect(() => { localStorage.setItem('session-shelf.filters', JSON.stringify(filters)); }, [filters]);
+  useEffect(() => { localStorage.setItem('session-shelf.root-query', rootQuery); }, [rootQuery]);
+  useEffect(() => { localStorage.setItem('session-shelf.root-sort', JSON.stringify(rootSort)); }, [rootSort]);
+  useEffect(() => { localStorage.setItem('session-shelf.all-query', allQuery); }, [allQuery]);
   useEffect(() => {
     if (!scanning) return undefined;
     let active = true;
@@ -276,6 +319,24 @@ function App() {
     const timer = setInterval(poll, 400);
     return () => { active = false; clearInterval(timer); };
   }, [scanning]);
+  useEffect(() => {
+    const onKeyDown = event => {
+      const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        document.querySelector('input[placeholder="Search sessions..."]')?.focus();
+      } else if (modifier && event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setView('filters');
+      } else if (event.key === 'Escape' && reviewFiles) {
+        setReviewFiles(null);
+        setRecycleReview(null);
+        setRemoveCatalogRows(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [reviewFiles, setView]);
   const activeArchived = view === 'archived';
   const activeGroups = activeArchived ? (data?.archivedGroups || []) : (data?.groups || []);
   const availableAgents = useMemo(() => [...new Set([...(data?.groups || []), ...(data?.archivedGroups || [])].flatMap(group => group.agents || []))].sort((left, right) => left.localeCompare(right)), [data]);
@@ -363,9 +424,14 @@ function App() {
       setMoving(false);
     }
   }
+  async function exportData(format) {
+    if (!data) return;
+    const contents = format === 'json' ? JSON.stringify({ exportedAt: new Date().toISOString(), stats: data.stats, groups: data.groups, archivedGroups: data.archivedGroups, files: data.files }, null, 2) : [['storage', 'archived', 'rootId', 'groupTitle', 'agent', 'name', 'sizeBytes', 'lastModified', 'path'].map(csvCell).join(','), ...data.files.map(file => [file.storage, file.archived, file.rootId, file.groupTitle, file.agent || 'Root', file.name, file.sizeBytes, file.lastModified, file.path].map(csvCell).join(','))].join('\n');
+    try { const destination = await apiExport(format, contents, 'session-shelf-export.' + format); if (destination) setToast('Exported ' + destination.split(/[\\/]/).pop()); } catch (exportError) { setError(exportError.message); }
+  }
   const rootView = <><RootList groups={visibleGroups} selectedGroup={selectedGroup} selectedPaths={selectedPaths} setSelectedGroup={group => setSelectedRootKey(group.key || group.rootId)} toggleGroup={toggleGroup} query={rootQuery} setQuery={setRootQuery} sort={rootSort} setSort={setRootSort} archived={activeArchived} filters={filters} setFilters={setFilters} agents={availableAgents} /><Inspector group={selectedGroup} selectedPaths={selectedPaths} kept={selectedGroup ? keptRoots.has(selectedGroup.key || selectedGroup.rootId) : false} setKept={setKept} toggleFile={toggleFile} toggleGroup={toggleGroup} review={review} reveal={reveal} previewLimit={preferences.previewLimit} onAlias={saveAlias} /></>;
   let content = rootView;
-  if (view === 'overview') content = <Overview data={data} />;
+  if (view === 'overview') content = <Overview data={data} onExport={exportData} />;
   if (view === 'all') content = <AllFilesView files={data?.files || []} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} query={allQuery} setQuery={setAllQuery} />;
   if (view === 'catalog') content = <CatalogView />;
   if (view === 'queue') content = <QueueView files={data?.files || []} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} onReview={review} />;

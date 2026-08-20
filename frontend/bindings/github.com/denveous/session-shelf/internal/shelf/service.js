@@ -25,6 +25,16 @@ export function Close() {
 }
 
 /**
+ * @param {string} format
+ * @param {string} contents
+ * @param {string} suggestedName
+ * @returns {$CancellablePromise<string>}
+ */
+export function ExportSnapshot(format, contents, suggestedName) {
+    return $Call.ByID(1346824705, format, contents, suggestedName);
+}
+
+/**
  * @returns {$CancellablePromise<$models.CatalogView>}
  */
 export function GetCatalog() {
@@ -49,6 +59,15 @@ export function GetSettings() {
     return $Call.ByID(125815944).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType2($result);
     }));
+}
+
+/**
+ * @param {string} kind
+ * @param {string} initial
+ * @returns {$CancellablePromise<string>}
+ */
+export function PickStoragePath(kind, initial) {
+    return $Call.ByID(1904579676, kind, initial);
 }
 
 /**
@@ -134,6 +153,18 @@ export function Scan(includeArchived) {
     }));
 }
 
+/**
+ * @param {string} filename
+ * @param {string} query
+ * @param {number} limit
+ * @returns {$CancellablePromise<$models.ContextSearch>}
+ */
+export function SearchContext(filename, query, limit) {
+    return $Call.ByID(744873274, filename, query, limit).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType9($result);
+    }));
+}
+
 // Private type creation functions
 const $$createType0 = $models.CatalogView.createFrom;
 const $$createType1 = $models.ScanStatus.createFrom;
@@ -144,3 +175,4 @@ const $$createType5 = $models.CatalogMutation.createFrom;
 const $$createType6 = $models.RecycleReview.createFrom;
 const $$createType7 = $models.TitleAlias.createFrom;
 const $$createType8 = $models.ScanResult.createFrom;
+const $$createType9 = $models.ContextSearch.createFrom;

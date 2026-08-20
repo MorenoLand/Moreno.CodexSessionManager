@@ -14,6 +14,7 @@ export {
     CatalogView,
     ContextMessage,
     ContextPreview,
+    ContextSearch,
     Group,
     RecycleCheck,
     RecycleItem,

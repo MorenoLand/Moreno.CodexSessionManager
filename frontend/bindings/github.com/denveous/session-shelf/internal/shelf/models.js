@@ -400,6 +400,73 @@ export class ContextPreview {
     }
 }
 
+export class ContextSearch {
+    /**
+     * Creates a new ContextSearch instance.
+     * @param {Partial<ContextSearch>} [$$source = {}] - The source object to create the ContextSearch.
+     */
+    constructor($$source = {}) {
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("query" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["query"] = "";
+        }
+        if (!("matches" in $$source)) {
+            /**
+             * @member
+             * @type {ContextMessage[]}
+             */
+            this["matches"] = [];
+        }
+        if (!("scannedBytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["scannedBytes"] = 0;
+        }
+        if (!("complete" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["complete"] = false;
+        }
+        if (!("readError" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["readError"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ContextSearch instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ContextSearch}
+     */
+    static createFrom($$source = {}) {
+        const $$createField2_0 = $$createType4;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("matches" in $$parsedSource) {
+            $$parsedSource["matches"] = $$createField2_0($$parsedSource["matches"]);
+        }
+        return new ContextSearch(/** @type {Partial<ContextSearch>} */($$parsedSource));
+    }
+}
+
 export class Group {
     /**
      * Creates a new Group instance.

@@ -49,6 +49,11 @@ export async function apiContext(filePath, limit) {
   return service ? service.Preview(filePath, limit) : request('/api/context?path=' + encodeURIComponent(filePath) + '&limit=' + limit);
 }
 
+export async function apiSearchContext(filePath, query, limit) {
+  const service = await wailsService();
+  return service ? service.SearchContext(filePath, query, limit) : request('/api/context/search?path=' + encodeURIComponent(filePath) + '&query=' + encodeURIComponent(query) + '&limit=' + limit);
+}
+
 export async function apiCatalog() {
   const service = await wailsService();
   return service ? service.GetCatalog() : request('/api/catalog');
@@ -62,6 +67,23 @@ export async function apiRemoveCatalogRows(confirm, threadIds) {
 export async function apiSettings() {
   const service = await wailsService();
   return service ? service.GetSettings() : request('/api/settings');
+}
+
+export async function apiPickStorage(kind, initial) {
+  const service = await wailsService();
+  return service ? service.PickStoragePath(kind, initial) : '';
+}
+
+export async function apiExport(format, contents, suggestedName) {
+  const service = await wailsService();
+  if (service) return service.ExportSnapshot(format, contents, suggestedName);
+  const blob = new Blob([contents], { type: format === 'csv' ? 'text/csv' : 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = suggestedName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  return suggestedName;
 }
 
 export async function apiSaveSettings(settings) {

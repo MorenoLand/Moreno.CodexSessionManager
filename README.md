@@ -70,7 +70,10 @@ Override locations per process when the Codex installation uses a different layo
 
 - **Preferences** controls whether archived sessions are included in scans and how many preview messages are loaded when a session is selected.
 - **Filters** applies minimum size, minimum file count, agent, and fork-only filters to both session tables.
+- **Saved filter views** persist named filter presets locally for repeat reviews.
 - **Storage locations** edits the absolute current-session, archived-session, and Catalog DB paths and saves them persistently.
+- In the Wails desktop app, **Browse** uses native folder/file dialogs; overlapping current/archive roots are rejected before saving.
+- **Search transcript** streams a selected root for message matches, while the Overview can export metadata as JSON or CSV.
 - **Rename** creates a local title alias when the Codex catalog title is missing or noisy; aliases are stored separately from transcripts.
 - The Wails backend keeps a metadata-only scan index and exposes cache hits, scan progress, and cancellation for large storage trees.
 - Global chrome does not display full filesystem paths; those remain available on the Storage locations page.
