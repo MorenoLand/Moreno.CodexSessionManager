@@ -7,6 +7,8 @@
 .agent-badge.root>i{background:#7a8ba6}
 @media (max-width:900px){.file-table-head,.file-row,.full-pane .file-table-head,.full-pane .file-row{grid-template-columns:22px 70px minmax(72px,1fr) 50px 20px}.file-table-head>span:nth-child(5),.file-row>span:nth-child(5){display:none}}
 
+.file-table-head{font-size:12px}.file-row{font-size:13px}.file-name{font-size:13px}.agent-badge{font-size:12px}.agent-name{font-size:13px}.search-box input{font-size:13px}.all-files-heading p{font-size:13px}.all-files-heading>span{font-size:13px}
+
 /* Catalog DB: fixed semantic columns prevent long host names and UUIDs from colliding. */
 .catalog-table{overflow:auto}
 .catalog-table .file-table-head,.catalog-table .file-row{min-width:920px;grid-template-columns:108px 130px minmax(190px,1fr) 300px 110px 32px;gap:12px}
