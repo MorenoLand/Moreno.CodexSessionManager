@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createReadStream, realpathSync } from 'node:fs';
-import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import os from 'node:os';
@@ -28,6 +28,7 @@ let catalogDbPath = defaultStorageConfig.catalogDb;
 const port = Number(process.env.PORT || 4310);
 const sqliteCommand = process.env.CODEX_SQLITE_COMMAND || (process.platform === 'win32' ? 'sqlite3.exe' : 'sqlite3');
 let sessionRoots = [];
+let lastScanFiles = new Map();
 
 function refreshSessionRoots() {
   sessionRoots = [
@@ -223,9 +224,35 @@ async function getCatalogView() {
 
 function sqlQuote(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 
-async function removeCatalogRows(threadIds) {
+async function backupCatalogDatabase() {
+  await access(catalogDbPath);
+  const timestamp = new Date().toISOString().replace(/[-:.]/g, '').replace('Z', 'Z');
+  const backupPath = path.join(path.dirname(catalogDbPath), `${path.basename(catalogDbPath)}.${timestamp}.bak`);
+  if (SqliteDatabaseSync) {
+    const database = new SqliteDatabaseSync(catalogDbPath);
+    try {
+      database.exec('PRAGMA busy_timeout=5000;');
+      database.exec(`VACUUM INTO ${sqlQuote(backupPath)};`);
+      return backupPath;
+    } catch (error) {
+      throw new Error(`Catalog DB backup failed: ${error.message}`);
+    } finally { database.close(); }
+  }
+  try {
+    await copyFile(catalogDbPath, backupPath);
+    for (const suffix of ['-wal', '-shm']) {
+      try { await copyFile(`${catalogDbPath}${suffix}`, `${backupPath}${suffix}`); } catch {}
+    }
+    return backupPath;
+  } catch (error) {
+    throw new Error(`Catalog DB backup failed: ${error.message}`);
+  }
+}
+
+async function removeCatalogRows(threadIds, backupPath = '') {
   const ids = [...new Set(threadIds.map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
   if (!ids.length) return { removed: 0, ids: [] };
+  if (!backupPath) backupPath = await backupCatalogDatabase();
   if (SqliteDatabaseSync) {
     const database = new SqliteDatabaseSync(catalogDbPath);
     try {
@@ -235,7 +262,7 @@ async function removeCatalogRows(threadIds) {
       const removed = Number(result.changes || 0);
       if (removed) database.prepare('UPDATE local_thread_catalog_metadata SET catalog_revision=catalog_revision+1 WHERE id=1;').run();
       database.exec('COMMIT;');
-      return { removed, ids };
+      return { removed, ids, backupPath };
     } catch (error) {
       try { database.exec('ROLLBACK;'); } catch {}
       throw error;
@@ -245,7 +272,7 @@ async function removeCatalogRows(threadIds) {
   const sql = `PRAGMA busy_timeout=5000; BEGIN IMMEDIATE; DELETE FROM local_thread_catalog WHERE host_id='local' AND thread_id IN (${predicates}); UPDATE local_thread_catalog_metadata SET catalog_revision=catalog_revision+1 WHERE id=1; COMMIT; SELECT changes() AS removed;`;
   const output = await runSqlite([catalogDbPath], sql);
   const match = output.match(/(\d+)\s*$/);
-  return { removed: Number(match?.[1] || 0), ids };
+  return { removed: Number(match?.[1] || 0), ids, backupPath };
 }
 
 function pathSegment(value) {
@@ -446,6 +473,7 @@ async function scanSessions(includeArchived = true) {
   const totalBytes = files.reduce((total, item) => total + item.sizeBytes, 0);
   const current = roots.find((source) => !source.archived);
   const archived = roots.find((source) => source.archived);
+  lastScanFiles = new Map(files.map((file) => [path.resolve(file.path).toLowerCase(), { sizeBytes: file.sizeBytes, lastModified: file.lastModified }]));
   return {
     root: rootDir,
     archivedRoot: archivedRootDir,
@@ -472,6 +500,58 @@ function isWithinScanRoot(filePath) {
   } catch {
     return false;
   }
+}
+
+async function reviewRecycle(paths, removeCatalogRows) {
+  const unique = [...new Set(paths.map((filePath) => String(filePath).trim()).filter(Boolean))];
+  if (!unique.length) throw new Error('No files selected');
+  const review = { safe: true, totalBytes: 0, files: [], catalog: { dbPath: catalogDbPath, available: false, threadIds: [], requested: 0, backupRequired: false, error: '' } };
+  for (const filePath of unique) {
+    const absolute = path.resolve(filePath);
+    const item = { path: absolute, name: path.basename(absolute), threadId: threadIdFromPath(absolute), ok: false, error: '', currentSizeBytes: 0, scannedSizeBytes: 0, currentLastModified: '', scannedLastModified: '' };
+    if (!isWithinScanRoot(absolute)) item.error = 'Path is outside a configured sessions directory or is not JSONL.';
+    let info = null;
+    if (!item.error) {
+      try { info = await stat(absolute); } catch { item.error = 'File is no longer available; scan again before moving it.'; }
+    }
+    if (info?.isDirectory()) item.error = 'Selected path is a directory.';
+    if (info) {
+      item.currentSizeBytes = Number(info.size);
+      item.currentLastModified = info.mtime.toISOString();
+      const snapshot = lastScanFiles.get(absolute.toLowerCase());
+      if (!snapshot) item.error = 'File was not part of the latest scan; scan again before moving it.';
+      else {
+        item.scannedSizeBytes = Number(snapshot.sizeBytes);
+        item.scannedLastModified = snapshot.lastModified;
+        if (item.currentSizeBytes !== item.scannedSizeBytes || item.currentLastModified !== item.scannedLastModified) item.error = 'File changed since the last scan; scan again before moving it.';
+      }
+      if (!item.error) {
+        try { await access(absolute); item.ok = true; } catch { item.error = 'File cannot be opened for verification; it may be locked or inaccessible.'; }
+      }
+    }
+    if (!item.ok) review.safe = false;
+    else {
+      review.totalBytes += item.currentSizeBytes;
+      if (item.threadId) review.catalog.threadIds.push(item.threadId);
+    }
+    review.files.push(item);
+  }
+  review.catalog.threadIds = [...new Set(review.catalog.threadIds.map((id) => id.toLowerCase()))];
+  review.catalog.requested = review.catalog.threadIds.length;
+  if (removeCatalogRows && review.catalog.requested) {
+    review.catalog.backupRequired = true;
+    review.catalog.available = await access(catalogDbPath).then(() => true).catch(() => false);
+    if (!review.catalog.available) {
+      review.catalog.error = 'Catalog DB is unavailable; matching entries cannot be removed safely.';
+      review.safe = false;
+    }
+  }
+  return review;
+}
+
+function recycleReviewError(review) {
+  const file = review.files.find((item) => !item.ok);
+  return file ? `Recycle blocked for ${file.name}: ${file.error}` : review.catalog.error || 'Recycle blocked by a safety check';
 }
 
 function readBody(request) {
@@ -580,20 +660,28 @@ const server = http.createServer(async (request, response) => {
       const ids = Array.isArray(payload.threadIds) ? payload.threadIds : [];
       return sendJson(response, 200, await removeCatalogRows(ids));
     }
+    if (request.method === 'POST' && url.pathname === '/api/recycle/review') {
+      const payload = JSON.parse(await readBody(request));
+      return sendJson(response, 200, await reviewRecycle(Array.isArray(payload.paths) ? payload.paths : [], payload.removeCatalogRows === true));
+    }
     if (request.method === 'POST' && url.pathname === '/api/recycle') {
       const payload = JSON.parse(await readBody(request));
       const paths = [...new Set(Array.isArray(payload.paths) ? payload.paths.map(String) : [])];
-      if (!paths.length) return sendJson(response, 400, { error: 'No files selected' });
-      if (paths.some((filePath) => !isWithinScanRoot(filePath))) return sendJson(response, 400, { error: 'A selected path is outside a configured sessions directory or is not JSONL' });
-      const result = await recycleFiles(paths);
+      const cleanup = payload.removeCatalogRows === true;
+      const review = await reviewRecycle(paths, cleanup);
+      if (!review.safe) return sendJson(response, 400, { error: recycleReviewError(review), review });
+      let backupPath = '';
+      if (cleanup && review.catalog.backupRequired) backupPath = await backupCatalogDatabase();
+      const result = await recycleFiles(review.files.map((item) => item.path));
       const catalog = { requested: 0, removed: 0, ids: [], error: '' };
-      if (payload.removeCatalogRows === true) {
+      if (cleanup) {
         catalog.ids = result.filter((item) => item.ok).map((item) => threadIdFromPath(item.path)).filter(Boolean);
         catalog.requested = catalog.ids.length;
         if (catalog.ids.length) {
           try {
-            const removed = await removeCatalogRows(catalog.ids);
+            const removed = await removeCatalogRows(catalog.ids, backupPath);
             catalog.removed = removed.removed;
+            catalog.backupPath = removed.backupPath;
           } catch (error) {
             catalog.error = error.message;
           }

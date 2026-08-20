@@ -84,6 +84,17 @@ export function Reveal(filename) {
 }
 
 /**
+ * @param {string[]} paths
+ * @param {boolean} removeCatalogRows
+ * @returns {$CancellablePromise<$models.RecycleReview>}
+ */
+export function ReviewRecycle(paths, removeCatalogRows) {
+    return $Call.ByID(4037232220, paths, removeCatalogRows).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType5($result);
+    }));
+}
+
+/**
  * @param {$models.StorageSettingsUpdate} update
  * @returns {$CancellablePromise<$models.StorageSettings>}
  */
@@ -99,7 +110,7 @@ export function SaveSettings(update) {
  */
 export function Scan(includeArchived) {
     return $Call.ByID(1387378682, includeArchived).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType5($result);
+        return $$createType6($result);
     }));
 }
 
@@ -109,4 +120,5 @@ const $$createType1 = $models.StorageSettings.createFrom;
 const $$createType2 = $models.ContextPreview.createFrom;
 const $$createType3 = $models.RecycleResponse.createFrom;
 const $$createType4 = $models.CatalogMutation.createFrom;
-const $$createType5 = $models.ScanResult.createFrom;
+const $$createType5 = $models.RecycleReview.createFrom;
+const $$createType6 = $models.ScanResult.createFrom;

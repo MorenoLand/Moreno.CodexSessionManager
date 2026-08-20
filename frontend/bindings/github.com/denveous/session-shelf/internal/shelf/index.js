@@ -8,14 +8,17 @@ export {
 };
 
 export {
+    CatalogCheck,
     CatalogMutation,
     CatalogRow,
     CatalogView,
     ContextMessage,
     ContextPreview,
     Group,
+    RecycleCheck,
     RecycleItem,
     RecycleResponse,
+    RecycleReview,
     ScanResult,
     ScanRoot,
     SessionFile,

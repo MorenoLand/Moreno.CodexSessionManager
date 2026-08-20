@@ -151,8 +151,9 @@ type CatalogView struct {
 }
 
 type CatalogMutation struct {
-	Removed int      `json:"removed"`
-	IDs     []string `json:"ids"`
+	Removed    int      `json:"removed"`
+	IDs        []string `json:"ids"`
+	BackupPath string   `json:"backupPath"`
 }
 
 type RecycleItem struct {
@@ -161,14 +162,48 @@ type RecycleItem struct {
 	Error string `json:"error,omitempty"`
 }
 
+type RecycleCheck struct {
+	Path                string `json:"path"`
+	Name                string `json:"name"`
+	ThreadID            string `json:"threadId"`
+	OK                  bool   `json:"ok"`
+	Error               string `json:"error,omitempty"`
+	CurrentSizeBytes    int64  `json:"currentSizeBytes"`
+	ScannedSizeBytes    int64  `json:"scannedSizeBytes"`
+	CurrentLastModified string `json:"currentLastModified"`
+	ScannedLastModified string `json:"scannedLastModified"`
+}
+
+type CatalogCheck struct {
+	DBPath         string   `json:"dbPath"`
+	Available      bool     `json:"available"`
+	ThreadIDs      []string `json:"threadIds"`
+	Requested      int      `json:"requested"`
+	BackupRequired bool     `json:"backupRequired"`
+	Error          string   `json:"error,omitempty"`
+}
+
+type RecycleReview struct {
+	Safe       bool           `json:"safe"`
+	TotalBytes int64          `json:"totalBytes"`
+	Files      []RecycleCheck `json:"files"`
+	Catalog    CatalogCheck   `json:"catalog"`
+}
+
 type RecycleResponse struct {
 	Result  []RecycleItem `json:"result"`
 	Catalog struct {
-		Requested int      `json:"requested"`
-		Removed   int      `json:"removed"`
-		IDs       []string `json:"ids"`
-		Error     string   `json:"error"`
+		Requested  int      `json:"requested"`
+		Removed    int      `json:"removed"`
+		IDs        []string `json:"ids"`
+		BackupPath string   `json:"backupPath"`
+		Error      string   `json:"error"`
 	} `json:"catalog"`
+}
+
+type scanSnapshot struct {
+	SizeBytes    int64
+	LastModified string
 }
 
 type sessionSource struct {
@@ -188,6 +223,7 @@ type Service struct {
 	scanMu       sync.Mutex
 	cancelMu     sync.Mutex
 	cancel       context.CancelFunc
+	lastScan     map[string]scanSnapshot
 }
 
 func NewService() (*Service, error) {
@@ -219,7 +255,7 @@ func NewService() (*Service, error) {
 	} else if value := os.Getenv("XDG_CONFIG_HOME"); value != "" {
 		configDir = filepath.Join(value, "session-shelf")
 	}
-	service := &Service{currentRoot: defaultLocations.CurrentRoot, archivedRoot: defaultLocations.ArchivedRoot, catalogDB: defaultLocations.CatalogDB, settingsPath: filepath.Join(configDir, "settings.json"), defaults: defaultLocations}
+	service := &Service{currentRoot: defaultLocations.CurrentRoot, archivedRoot: defaultLocations.ArchivedRoot, catalogDB: defaultLocations.CatalogDB, settingsPath: filepath.Join(configDir, "settings.json"), defaults: defaultLocations, lastScan: map[string]scanSnapshot{}}
 	service.loadStoredSettings()
 	return service, nil
 }
@@ -389,6 +425,13 @@ func (s *Service) Scan(includeArchived bool) (ScanResult, error) {
 			result.Groups = root.Groups
 		}
 	}
+	snapshots := make(map[string]scanSnapshot, len(files))
+	for _, file := range files {
+		snapshots[pathKey(file.Path)] = scanSnapshot{SizeBytes: file.SizeBytes, LastModified: file.LastModified}
+	}
+	s.mu.Lock()
+	s.lastScan = snapshots
+	s.mu.Unlock()
 	return result, nil
 }
 
@@ -808,6 +851,10 @@ func (s *Service) findTranscriptIDs() map[string]bool {
 }
 
 func (s *Service) RemoveCatalogRows(confirm string, threadIDs []string) (CatalogMutation, error) {
+	return s.removeCatalogRows(confirm, threadIDs, "")
+}
+
+func (s *Service) removeCatalogRows(confirm string, threadIDs []string, backupPath string) (CatalogMutation, error) {
 	if confirm != "REMOVE" {
 		return CatalogMutation{}, errors.New("Type REMOVE to confirm catalog-row deletion")
 	}
@@ -815,7 +862,15 @@ func (s *Service) RemoveCatalogRows(confirm string, threadIDs []string) (Catalog
 	if len(ids) == 0 {
 		return CatalogMutation{IDs: []string{}}, nil
 	}
-	database, err := sql.Open("sqlite", s.locations().CatalogDB)
+	catalogDB := s.locations().CatalogDB
+	if backupPath == "" {
+		var err error
+		backupPath, err = backupCatalogDatabase(catalogDB)
+		if err != nil {
+			return CatalogMutation{}, err
+		}
+	}
+	database, err := sql.Open("sqlite", catalogDB)
 	if err != nil {
 		return CatalogMutation{}, err
 	}
@@ -842,7 +897,38 @@ func (s *Service) RemoveCatalogRows(confirm string, threadIDs []string) (Catalog
 		return CatalogMutation{}, err
 	}
 	count, _ := result.RowsAffected()
-	return CatalogMutation{Removed: int(count), IDs: ids}, nil
+	return CatalogMutation{Removed: int(count), IDs: ids, BackupPath: backupPath}, nil
+}
+
+func backupCatalogDatabase(filename string) (string, error) {
+	info, err := os.Stat(filename)
+	if err != nil {
+		return "", fmt.Errorf("Catalog DB backup failed: %w", err)
+	}
+	if info.IsDir() {
+		return "", errors.New("Catalog DB backup failed: configured path is a directory")
+	}
+	timestamp := time.Now().UTC().Format("20060102T150405.000000000Z")
+	backupPath := filepath.Join(filepath.Dir(filename), filepath.Base(filename)+"."+timestamp+".bak")
+	for index := 1; ; index++ {
+		if _, statErr := os.Stat(backupPath); os.IsNotExist(statErr) {
+			break
+		}
+		backupPath = filepath.Join(filepath.Dir(filename), fmt.Sprintf("%s.%s.%d.bak", filepath.Base(filename), timestamp, index))
+	}
+	database, err := sql.Open("sqlite", filename)
+	if err != nil {
+		return "", fmt.Errorf("Catalog DB backup failed: %w", err)
+	}
+	defer database.Close()
+	if _, err := database.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return "", fmt.Errorf("Catalog DB backup failed: %w", err)
+	}
+	escaped := strings.ReplaceAll(backupPath, "'", "''")
+	if _, err := database.Exec("VACUUM INTO '" + escaped + "'"); err != nil {
+		return "", fmt.Errorf("Catalog DB backup failed: %w", err)
+	}
+	return backupPath, nil
 }
 
 func uniqueUUIDs(values []string) []string {
@@ -970,18 +1056,124 @@ func (s *Service) isWithinScanRoot(filename string) bool {
 	return false
 }
 
-func (s *Service) Recycle(paths []string, removeCatalogRows bool) (RecycleResponse, error) {
+func pathKey(filename string) string {
+	absolute, err := filepath.Abs(filename)
+	if err != nil {
+		absolute = filepath.Clean(filename)
+	}
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(absolute)
+	}
+	return absolute
+}
+
+func (s *Service) ReviewRecycle(paths []string, removeCatalogRows bool) (RecycleReview, error) {
 	unique := uniqueStrings(paths)
 	if len(unique) == 0 {
-		return RecycleResponse{}, errors.New("No files selected")
+		return RecycleReview{}, errors.New("No files selected")
 	}
+	locations := s.locations()
+	review := RecycleReview{Safe: true, Files: []RecycleCheck{}, Catalog: CatalogCheck{DBPath: locations.CatalogDB, ThreadIDs: []string{}}}
 	for _, filename := range unique {
-		if !s.isWithinScanRoot(filename) {
-			return RecycleResponse{}, errors.New("A selected path is outside a configured sessions directory or is not JSONL")
+		check := s.checkRecycleFile(filename)
+		review.Files = append(review.Files, check)
+		if !check.OK {
+			review.Safe = false
+			continue
+		}
+		review.TotalBytes += check.CurrentSizeBytes
+		if check.ThreadID != "" {
+			review.Catalog.ThreadIDs = append(review.Catalog.ThreadIDs, check.ThreadID)
 		}
 	}
+	review.Catalog.ThreadIDs = uniqueUUIDs(review.Catalog.ThreadIDs)
+	review.Catalog.Requested = len(review.Catalog.ThreadIDs)
+	if removeCatalogRows && review.Catalog.Requested > 0 {
+		info, err := os.Stat(locations.CatalogDB)
+		review.Catalog.Available = err == nil && !info.IsDir()
+		review.Catalog.BackupRequired = true
+		if !review.Catalog.Available {
+			review.Catalog.Error = "Catalog DB is unavailable; matching entries cannot be removed safely."
+			review.Safe = false
+		}
+	}
+	return review, nil
+}
+
+func (s *Service) checkRecycleFile(filename string) RecycleCheck {
+	absolute, err := filepath.Abs(filename)
+	if err != nil {
+		absolute = filepath.Clean(filename)
+	}
+	check := RecycleCheck{Path: absolute, Name: filepath.Base(absolute), ThreadID: threadIDFromPath(absolute)}
+	if !s.isWithinScanRoot(absolute) {
+		check.Error = "Path is outside a configured sessions directory or is not JSONL."
+		return check
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		check.Error = "File is no longer available; scan again before moving it."
+		return check
+	}
+	if info.IsDir() {
+		check.Error = "Selected path is a directory."
+		return check
+	}
+	check.CurrentSizeBytes = info.Size()
+	check.CurrentLastModified = info.ModTime().UTC().Format(time.RFC3339Nano)
+	s.mu.RLock()
+	snapshot, found := s.lastScan[pathKey(absolute)]
+	s.mu.RUnlock()
+	if !found {
+		check.Error = "File was not part of the latest scan; scan again before moving it."
+		return check
+	}
+	check.ScannedSizeBytes = snapshot.SizeBytes
+	check.ScannedLastModified = snapshot.LastModified
+	if check.CurrentSizeBytes != snapshot.SizeBytes || check.CurrentLastModified != snapshot.LastModified {
+		check.Error = "File changed since the last scan; scan again before moving it."
+		return check
+	}
+	handle, err := os.Open(absolute)
+	if err != nil {
+		check.Error = "File cannot be opened for verification; it may be locked or inaccessible."
+		return check
+	}
+	handle.Close()
+	check.OK = true
+	return check
+}
+
+func recycleReviewError(review RecycleReview) error {
+	for _, file := range review.Files {
+		if !file.OK {
+			return fmt.Errorf("Recycle blocked for %s: %s", file.Name, file.Error)
+		}
+	}
+	if review.Catalog.Error != "" {
+		return errors.New(review.Catalog.Error)
+	}
+	return errors.New("Recycle blocked by a safety check")
+}
+
+func (s *Service) Recycle(paths []string, removeCatalogRows bool) (RecycleResponse, error) {
+	review, err := s.ReviewRecycle(paths, removeCatalogRows)
+	if err != nil {
+		return RecycleResponse{}, err
+	}
+	if !review.Safe {
+		return RecycleResponse{}, recycleReviewError(review)
+	}
 	response := RecycleResponse{Result: []RecycleItem{}}
-	for _, filename := range unique {
+	backupPath := ""
+	if removeCatalogRows && review.Catalog.BackupRequired {
+		backupPath, err = backupCatalogDatabase(review.Catalog.DBPath)
+		if err != nil {
+			return RecycleResponse{}, err
+		}
+	}
+	for _, file := range review.Files {
+		filename := file.Path
 		item := RecycleItem{Path: filename}
 		if !trashAvailable() {
 			item.Error = "System trash is unavailable on this platform."
@@ -1003,11 +1195,12 @@ func (s *Service) Recycle(paths []string, removeCatalogRows bool) (RecycleRespon
 		response.Catalog.IDs = uniqueUUIDs(response.Catalog.IDs)
 		response.Catalog.Requested = len(response.Catalog.IDs)
 		if len(response.Catalog.IDs) > 0 {
-			removed, err := s.RemoveCatalogRows("REMOVE", response.Catalog.IDs)
+			removed, err := s.removeCatalogRows("REMOVE", response.Catalog.IDs, backupPath)
 			if err != nil {
 				response.Catalog.Error = err.Error()
 			} else {
 				response.Catalog.Removed = removed.Removed
+				response.Catalog.BackupPath = removed.BackupPath
 			}
 		}
 	}

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './context.css';
 import './file-table.css';
-import { apiCatalog, apiContext, apiRecycle, apiRemoveCatalogRows, apiReveal, apiSaveSettings, apiScan, apiSettings } from './backend.js';
+import { apiCatalog, apiContext, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiScan, apiSettings } from './backend.js';
 
 const icons = {
   archive: 'M4 7h16M5 7v12h14V7M8 4h8l1 3H7l1-3',
@@ -215,10 +215,12 @@ function StorageLocationsView({ onSaved }) {
 function EmptyState({ title, detail }) {
   return <div className="empty-state"><Icon name="archive" size={28} /><h2>{title}</h2><p>{detail}</p></div>;
 }
-function ReviewModal({ files, onClose, onConfirm, busy, removeCatalogRows, setRemoveCatalogRows }) {
+function ReviewModal({ files, safety, onClose, onConfirm, busy, reviewBusy, removeCatalogRows, onCleanupChange }) {
   const [value, setValue] = useState('');
   const total = files.reduce((sum, file) => sum + file.sizeBytes, 0);
-  return <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={onClose}><Icon name="x" /></button><div className="modal-icon"><Icon name="trash" size={24} /></div><h2>Move files to system trash?</h2><p>{files.length} selected JSONL files will be moved reversibly.</p><div className="modal-summary"><strong>{formatBytes(total)}</strong><span>{files.length} files</span></div><div className="modal-file-list">{files.slice(0, 12).map(file => <div key={file.path}><span>{file.name}</span><span>{formatBytes(file.sizeBytes)}</span></div>)}</div><label className="keep-toggle catalog-cleanup-toggle"><input type="checkbox" checked={removeCatalogRows} onChange={event => setRemoveCatalogRows(event.target.checked)} /><span><strong>Remove matching Catalog DB entries</strong><small>Only after the selected files reach system trash.</small></span></label><label className="confirm-input"><span>Type MOVE to confirm</span><input value={value} onChange={event => setValue(event.target.value)} autoFocus /></label><div className="modal-actions"><Button onClick={onClose}>Cancel</Button><Button variant="danger" icon="trash" onClick={onConfirm} disabled={value !== 'MOVE' || busy}>{busy ? 'Moving...' : 'Move selected'}</Button></div></div></div>;
+  const blocked = !reviewBusy && safety && !safety.safe;
+  const firstError = safety?.files?.find(file => !file.ok)?.error || safety?.catalog?.error;
+  return <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={onClose}><Icon name="x" /></button><div className="modal-icon"><Icon name="trash" size={24} /></div><h2>Move files to system trash?</h2><p>{files.length} selected JSONL files will be moved reversibly after a fresh safety check.</p><div className="modal-summary"><strong>{formatBytes(total)}</strong><span>{files.length} files</span></div><div className={'safety-check ' + (reviewBusy ? 'checking' : blocked ? 'blocked' : 'ready')}><Icon name={reviewBusy ? 'refresh' : blocked ? 'info' : 'check'} size={16} /><div><strong>{reviewBusy ? 'Checking file state...' : blocked ? 'Move blocked' : 'Preflight passed'}</strong><span>{reviewBusy ? 'Verifying the files have not changed since the scan.' : blocked ? firstError : 'The selected paths are inside the configured roots and match the latest scan.'}</span></div></div><div className="modal-file-list">{files.slice(0, 12).map(file => <div key={file.path}><span>{file.name}</span><span>{formatBytes(file.sizeBytes)}</span></div>)}{files.length > 12 && <div><span>+ {files.length - 12} more files</span><span /></div>}</div><label className="keep-toggle catalog-cleanup-toggle"><input type="checkbox" checked={removeCatalogRows} onChange={event => onCleanupChange(event.target.checked)} disabled={busy || reviewBusy} /><span><strong>Remove matching Catalog DB entries</strong><small>A SQLite backup is created before any matching rows are removed.</small></span></label>{safety?.catalog?.backupRequired && <div className="backup-note"><Icon name="database" size={14} />Catalog cleanup is armed; a backup will be created before the move.</div>}<label className="confirm-input"><span>Type MOVE to confirm</span><input value={value} onChange={event => setValue(event.target.value)} autoFocus /></label><div className="modal-actions"><Button onClick={onClose}>Cancel</Button><Button variant="danger" icon="trash" onClick={onConfirm} disabled={value !== 'MOVE' || busy || reviewBusy || blocked}>{busy ? 'Moving...' : 'Move selected'}</Button></div></div></div>;
 }
 function App() {
   const [data, setData] = useState(null);
@@ -229,6 +231,8 @@ function App() {
   const [selectedPaths, setSelectedPaths] = useState(new Set());
   const [keptRoots, setKeptRoots] = useState(new Set());
   const [reviewFiles, setReviewFiles] = useState(null);
+  const [recycleReview, setRecycleReview] = useState(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [removeCatalogRows, setRemoveCatalogRows] = useState(false);
   const [moving, setMoving] = useState(false);
   const [toast, setToast] = useState('');
@@ -282,18 +286,45 @@ function App() {
   async function reveal(filePath) {
     try { await apiReveal(filePath); } catch {}
   }
+  async function prepareReview(files, cleanup) {
+    setReviewFiles(files);
+    setRemoveCatalogRows(cleanup);
+    setRecycleReview(null);
+    setReviewBusy(true);
+    try {
+      setRecycleReview(await apiReviewRecycle(files.map(file => file.path), cleanup));
+    } catch (reviewError) {
+      setReviewFiles(null);
+      setError(reviewError.message);
+    } finally {
+      setReviewBusy(false);
+    }
+  }
   function review() {
     const files = selectedGroup?.files.filter(file => selectedPaths.has(file.path)) || [];
-    if (files.length) { setRemoveCatalogRows(false); setReviewFiles(files); }
+    if (files.length) prepareReview(files, false);
+  }
+  async function changeCleanup(value) {
+    setRemoveCatalogRows(value);
+    if (!reviewFiles?.length) return;
+    setReviewBusy(true);
+    try {
+      setRecycleReview(await apiReviewRecycle(reviewFiles.map(file => file.path), value));
+    } catch (reviewError) {
+      setError(reviewError.message);
+    } finally {
+      setReviewBusy(false);
+    }
   }
   async function moveSelected() {
-    if (!reviewFiles?.length) return;
+    if (!reviewFiles?.length || !recycleReview?.safe) return;
     setMoving(true);
     try {
       const result = await apiRecycle(reviewFiles.map(file => file.path), removeCatalogRows);
       setSelectedPaths(current => new Set([...current].filter(filePath => !reviewFiles.some(file => file.path === filePath))));
       setReviewFiles(null);
-      setToast(result.catalog?.error ? 'Files moved; Catalog DB cleanup failed: ' + result.catalog.error : 'Moved ' + reviewFiles.length + ' files to system trash' + (result.catalog?.removed ? ' and removed ' + result.catalog.removed + ' Catalog DB entries.' : '.'));
+      setRecycleReview(null);
+      setToast(result.catalog?.error ? 'Files moved; Catalog DB cleanup failed: ' + result.catalog.error : 'Moved ' + reviewFiles.length + ' files to system trash' + (result.catalog?.removed ? ' and removed ' + result.catalog.removed + ' Catalog DB entries.' : '') + (result.catalog?.backupPath ? ' Catalog DB backup created.' : '.'));
       await scan();
     } catch (moveError) {
       setError(moveError.message);
@@ -312,6 +343,6 @@ function App() {
   if (view === 'filters') content = <FiltersView filters={filters} setFilters={setFilters} agents={availableAgents} />;
   if (view === 'preferences') content = <PreferencesView preferences={preferences} updatePreferences={updatePreferences} />;
   const browsingRoots = view === 'roots' || view === 'archived';
-  return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} scanning={scanning} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} onClose={() => { setReviewFiles(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} removeCatalogRows={removeCatalogRows} setRemoveCatalogRows={setRemoveCatalogRows} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
+  return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} scanning={scanning} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} safety={recycleReview} onClose={() => { setReviewFiles(null); setRecycleReview(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} reviewBusy={reviewBusy} removeCatalogRows={removeCatalogRows} onCleanupChange={changeCleanup} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
 }
 createRoot(document.getElementById('root')).render(<App/>);

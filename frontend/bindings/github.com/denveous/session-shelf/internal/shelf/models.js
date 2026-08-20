@@ -6,6 +6,73 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+export class CatalogCheck {
+    /**
+     * Creates a new CatalogCheck instance.
+     * @param {Partial<CatalogCheck>} [$$source = {}] - The source object to create the CatalogCheck.
+     */
+    constructor($$source = {}) {
+        if (!("dbPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["dbPath"] = "";
+        }
+        if (!("available" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["available"] = false;
+        }
+        if (!("threadIds" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["threadIds"] = [];
+        }
+        if (!("requested" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["requested"] = 0;
+        }
+        if (!("backupRequired" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["backupRequired"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["error"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CatalogCheck instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {CatalogCheck}
+     */
+    static createFrom($$source = {}) {
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("threadIds" in $$parsedSource) {
+            $$parsedSource["threadIds"] = $$createField2_0($$parsedSource["threadIds"]);
+        }
+        return new CatalogCheck(/** @type {Partial<CatalogCheck>} */($$parsedSource));
+    }
+}
+
 export class CatalogMutation {
     /**
      * Creates a new CatalogMutation instance.
@@ -25,6 +92,13 @@ export class CatalogMutation {
              * @type {string[]}
              */
             this["ids"] = [];
+        }
+        if (!("backupPath" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["backupPath"] = "";
         }
 
         Object.assign(this, $$source);
@@ -460,6 +534,90 @@ export class Group {
     }
 }
 
+export class RecycleCheck {
+    /**
+     * Creates a new RecycleCheck instance.
+     * @param {Partial<RecycleCheck>} [$$source = {}] - The source object to create the RecycleCheck.
+     */
+    constructor($$source = {}) {
+        if (!("path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["path"] = "";
+        }
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("threadId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["threadId"] = "";
+        }
+        if (!("ok" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["ok"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["error"] = undefined;
+        }
+        if (!("currentSizeBytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["currentSizeBytes"] = 0;
+        }
+        if (!("scannedSizeBytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["scannedSizeBytes"] = 0;
+        }
+        if (!("currentLastModified" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["currentLastModified"] = "";
+        }
+        if (!("scannedLastModified" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["scannedLastModified"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleCheck instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RecycleCheck}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new RecycleCheck(/** @type {Partial<RecycleCheck>} */($$parsedSource));
+    }
+}
+
 export class RecycleItem {
     /**
      * Creates a new RecycleItem instance.
@@ -518,9 +676,9 @@ export class RecycleResponse {
         if (!("catalog" in $$source)) {
             /**
              * @member
-             * @type {{"requested": number, "removed": number, "ids": string[], "error": string}}
+             * @type {{"requested": number, "removed": number, "ids": string[], "backupPath": string, "error": string}}
              */
-            this["catalog"] = {"requested": 0, "removed": 0, "ids": [], "error": ""};
+            this["catalog"] = {"requested": 0, "removed": 0, "ids": [], "backupPath": "", "error": ""};
         }
 
         Object.assign(this, $$source);
@@ -542,6 +700,63 @@ export class RecycleResponse {
             $$parsedSource["catalog"] = $$createField1_0($$parsedSource["catalog"]);
         }
         return new RecycleResponse(/** @type {Partial<RecycleResponse>} */($$parsedSource));
+    }
+}
+
+export class RecycleReview {
+    /**
+     * Creates a new RecycleReview instance.
+     * @param {Partial<RecycleReview>} [$$source = {}] - The source object to create the RecycleReview.
+     */
+    constructor($$source = {}) {
+        if (!("safe" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["safe"] = false;
+        }
+        if (!("totalBytes" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["totalBytes"] = 0;
+        }
+        if (!("files" in $$source)) {
+            /**
+             * @member
+             * @type {RecycleCheck[]}
+             */
+            this["files"] = [];
+        }
+        if (!("catalog" in $$source)) {
+            /**
+             * @member
+             * @type {CatalogCheck}
+             */
+            this["catalog"] = (new CatalogCheck());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new RecycleReview instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {RecycleReview}
+     */
+    static createFrom($$source = {}) {
+        const $$createField2_0 = $$createType11;
+        const $$createField3_0 = $$createType12;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("files" in $$parsedSource) {
+            $$parsedSource["files"] = $$createField2_0($$parsedSource["files"]);
+        }
+        if ("catalog" in $$parsedSource) {
+            $$parsedSource["catalog"] = $$createField3_0($$parsedSource["catalog"]);
+        }
+        return new RecycleReview(/** @type {Partial<RecycleReview>} */($$parsedSource));
     }
 }
 
@@ -631,12 +846,12 @@ export class ScanResult {
      * @returns {ScanResult}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType10;
-        const $$createField4_0 = $$createType10;
-        const $$createField5_0 = $$createType10;
-        const $$createField6_0 = $$createType12;
-        const $$createField7_0 = $$createType14;
-        const $$createField8_0 = $$createType14;
+        const $$createField3_0 = $$createType13;
+        const $$createField4_0 = $$createType13;
+        const $$createField5_0 = $$createType13;
+        const $$createField6_0 = $$createType15;
+        const $$createField7_0 = $$createType17;
+        const $$createField8_0 = $$createType17;
         const $$createField9_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
@@ -736,8 +951,8 @@ export class ScanRoot {
      * @returns {ScanRoot}
      */
     static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType10;
-        const $$createField6_0 = $$createType14;
+        const $$createField5_0 = $$createType13;
+        const $$createField6_0 = $$createType17;
         const $$createField7_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
@@ -1028,7 +1243,7 @@ export class StorageSettings {
      * @returns {StorageSettings}
      */
     static createFrom($$source = {}) {
-        const $$createField4_0 = $$createType15;
+        const $$createField4_0 = $$createType18;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("defaults" in $$parsedSource) {
             $$parsedSource["defaults"] = $$createField4_0($$parsedSource["defaults"]);
@@ -1092,9 +1307,12 @@ const $$createType8 = $Create.Array($$createType7);
 const $$createType9 = $Create.Struct({
     "ids": $$createType0,
 });
-const $$createType10 = Stats.createFrom;
-const $$createType11 = ScanRoot.createFrom;
-const $$createType12 = $Create.Array($$createType11);
-const $$createType13 = Group.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = StorageLocations.createFrom;
+const $$createType10 = RecycleCheck.createFrom;
+const $$createType11 = $Create.Array($$createType10);
+const $$createType12 = CatalogCheck.createFrom;
+const $$createType13 = Stats.createFrom;
+const $$createType14 = ScanRoot.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = Group.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = StorageLocations.createFrom;

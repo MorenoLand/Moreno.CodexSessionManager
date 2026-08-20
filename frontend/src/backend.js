@@ -59,3 +59,8 @@ export async function apiRecycle(paths, removeCatalogRows) {
   const service = await wailsService();
   return service ? service.Recycle(paths, removeCatalogRows) : request('/api/recycle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
 }
+
+export async function apiReviewRecycle(paths, removeCatalogRows) {
+  const service = await wailsService();
+  return service ? service.ReviewRecycle(paths, removeCatalogRows) : request('/api/recycle/review', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
+}
