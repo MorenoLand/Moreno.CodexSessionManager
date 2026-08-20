@@ -198,12 +198,14 @@ function QueueView({ files, selectedPaths, toggleFile, reveal, onReview }) {
   const selected = files.filter(file => selectedPaths.has(file.path));
   return <section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Review queue</h1><p>Only files you explicitly selected are eligible for review.</p></div><Button variant="primary" icon="archive" onClick={onReview} disabled={!selected.length}>Review {selected.length} files</Button></div>{selected.length ? <FileTable files={selected} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /> : <EmptyState title="Nothing queued" detail="Select files from a conversation root and they will appear here." />}</section>;
 }
+const catalogHeaders = [['orphaned', 'Status'], ['host_id', 'Host'], ['display_title', 'Title'], ['thread_id', 'Thread ID'], ['source_kind', 'Source']];
 function CatalogView() {
   const [catalog, setCatalog] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(null);
   const [confirmation, setConfirmation] = useState('');
+  const [query, setQuery] = useState('');
   const [sort, setSort] = useState({ key: 'source_updated_at', direction: 'desc' });
   const load = useCallback(async () => {
     try {
@@ -216,13 +218,16 @@ function CatalogView() {
   }, []);
   useEffect(() => { load(); }, [load]);
   const toggle = key => setSort(current => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' });
-  const rows = [...(catalog?.rows || [])].sort((a, b) => {
-    const left = a[sort.key] ?? '';
-    const right = b[sort.key] ?? '';
-    const result = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right));
-    return sort.direction === 'asc' ? result : -result;
-  });
-  const headers = [['orphaned', 'Status'], ['host_id', 'Host'], ['display_title', 'Title'], ['thread_id', 'Thread ID'], ['source_kind', 'Source']];
+  const rows = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return [...(catalog?.rows || [])].filter(row => !needle || [row.orphaned ? 'orphaned' : 'ok', row.host_id, row.display_title, row.thread_id, row.source_kind, row.thread_source].some(value => String(value ?? '').toLowerCase().includes(needle))).sort((a, b) => {
+      const left = a[sort.key] ?? '';
+      const right = b[sort.key] ?? '';
+      const result = typeof left === 'number' && typeof right === 'number' ? left - right : String(left).localeCompare(String(right));
+      return sort.direction === 'asc' ? result : -result;
+    });
+  }, [catalog, query, sort]);
+  const totalRows = catalog?.rows?.length || 0;
   async function remove() {
     if (!pending || confirmation !== 'REMOVE') return;
     setBusy(true);
@@ -237,7 +242,7 @@ function CatalogView() {
       setBusy(false);
     }
   }
-  return <><section className="center-pane full-pane"><div className="all-files-heading"><div><h1>Catalog DB</h1><p>Local thread catalog. Orphaned rows have no matching transcript file.</p><p className="path-text">{catalog?.dbPath || 'Loading...'}</p></div><Button icon="refresh" onClick={load} disabled={busy}>Refresh</Button></div>{error && <div className="error-banner">{error}</div>}{catalog?.error && <div className="error-banner">{catalog.error}</div>}<div className="file-table catalog-table"><div className="file-table-head">{headers.map(([key, label]) => <button className="catalog-sort" key={key} onClick={() => toggle(key)}>{label}<span>{sort.key === key ? sort.direction === 'asc' ? '▲' : '▼' : '↕'}</span></button>)}<span /></div>{rows.map(row => <div className={'file-row ' + (row.orphaned ? 'selected' : '')} key={row.host_id + '-' + row.thread_id}><span>{row.orphaned ? 'ORPHANED' : 'OK'}</span><span>{row.host_id}</span><span title={row.display_title}>{row.display_title}</span><span>{row.thread_id}</span><span>{row.source_kind || row.thread_source || 'local'}</span><button className="reveal-button" disabled={busy} onClick={() => { setConfirmation(''); setPending(row); }}><Icon name="trash" size={15} /></button></div>)}</div></section>{pending && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setPending(null)}><Icon name="x" /></button><div className="modal-icon"><Icon name="trash" size={24} /></div><h2>{pending.orphaned ? 'Remove orphaned catalog row?' : 'Remove catalog row from Codex sidebar?'}</h2><p>{pending.orphaned ? 'This removes only the orphaned metadata row. It does not modify any transcript.' : 'This removes the conversation from Codex’s sidebar. It does not modify the active or archived transcript.'}</p><div className="modal-summary"><strong>{pending.display_title || 'Untitled'}</strong><span className="catalog-modal-id">{pending.thread_id}</span></div><label className="confirm-input"><span>Type REMOVE to confirm</span><input value={confirmation} onChange={event => setConfirmation(event.target.value)} autoFocus /></label><div className="modal-actions"><Button onClick={() => setPending(null)}>Cancel</Button><Button variant="danger" icon="trash" onClick={remove} disabled={confirmation !== 'REMOVE' || busy}>{busy ? 'Removing...' : 'Remove catalog row'}</Button></div></div></div>}</>;
+  return <><section className="center-pane full-pane"><div className="all-files-heading catalog-heading"><div><h1>Catalog DB</h1><p>Search and manage local thread metadata. Orphaned rows have no matching transcript file.</p><p className="path-text">{catalog?.dbPath || 'Loading...'}</p></div><Button icon="refresh" onClick={load} disabled={busy}>Refresh</Button></div>{error && <div className="error-banner">{error}</div>}{catalog?.error && <div className="error-banner">{catalog.error}</div>}<div className="catalog-tools"><label className="search-box catalog-search"><Icon name="search" size={18} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search title, thread ID, host, or source..." aria-label="Search Catalog DB" /></label>{query && <button type="button" className="catalog-clear" onClick={() => setQuery('')} aria-label="Clear Catalog DB search"><Icon name="x" size={16} /></button>}<span className="catalog-result-count">{query ? rows.length + (rows.length === 1 ? ' match' : ' matches') : totalRows + ' rows'}</span></div><div className="file-table catalog-table"><div className="file-table-head">{catalogHeaders.map(([key, label]) => <button className="catalog-sort" key={key} aria-label={'Sort by ' + label} aria-sort={sort.key === key ? sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'} onClick={() => toggle(key)}>{label}<span>{sort.key === key ? sort.direction === 'asc' ? '▲' : '▼' : '↕'}</span></button>)}<span /></div>{rows.length ? rows.map(row => <div className={'file-row ' + (row.orphaned ? 'selected' : '')} key={row.host_id + '-' + row.thread_id}><span>{row.orphaned ? 'ORPHANED' : 'OK'}</span><span title={row.host_id}>{row.host_id}</span><span title={row.display_title}>{row.display_title}</span><span title={row.thread_id}>{row.thread_id}</span><span>{row.source_kind || row.thread_source || 'local'}</span><button className="reveal-button" disabled={busy} onClick={() => { setConfirmation(''); setPending(row); }} aria-label={'Remove ' + (row.display_title || row.thread_id) + ' from Catalog DB'}><Icon name="trash" size={16} /></button></div>) : <div className="catalog-empty">{catalog ? query ? <>No catalog rows match <strong>{query}</strong>.</> : 'No catalog rows available.' : 'Loading Catalog DB...'}</div>}</div></section>{pending && <div className="modal-backdrop"><div className="modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={() => setPending(null)}><Icon name="x" /></button><div className="modal-icon"><Icon name="trash" size={24} /></div><h2>{pending.orphaned ? 'Remove orphaned catalog row?' : 'Remove catalog row from Codex sidebar?'}</h2><p>{pending.orphaned ? 'This removes only the orphaned metadata row. It does not modify any transcript.' : 'This removes the conversation from Codex’s sidebar. It does not modify the active or archived transcript.'}</p><div className="modal-summary"><strong>{pending.display_title || 'Untitled'}</strong><span className="catalog-modal-id">{pending.thread_id}</span></div><label className="confirm-input"><span>Type REMOVE to confirm</span><input value={confirmation} onChange={event => setConfirmation(event.target.value)} autoFocus /></label><div className="modal-actions"><Button onClick={() => setPending(null)}>Cancel</Button><Button variant="danger" icon="trash" onClick={remove} disabled={confirmation !== 'REMOVE' || busy}>{busy ? 'Removing...' : 'Remove catalog row'}</Button></div></div></div>}</>;
 }
 function Overview({ data, onExport }) {
   const stats = data?.stats;
