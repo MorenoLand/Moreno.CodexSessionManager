@@ -1,0 +1,24 @@
+{
+  "name": "session-shelf",
+  "version": "0.1.0",
+  "description": "Local cross-platform browser for reviewing and safely reclaiming Codex JSONL sessions",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "check": "node --check server.mjs",
+    "dev": "node server.mjs",
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "trash": "^10.1.1"
+  },
+  "devDependencies": {
+    "vite": "^7.0.6"
+  }
+}

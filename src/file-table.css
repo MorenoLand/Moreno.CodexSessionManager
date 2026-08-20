@@ -1,0 +1,27 @@
+.file-table-head,.file-row{grid-template-columns:22px 78px minmax(70px,1fr) 55px 75px 20px}
+.full-pane .file-table-head,.full-pane .file-row{grid-template-columns:23px minmax(118px,.34fr) minmax(260px,1fr) 100px 180px 22px}
+.agent-badge{min-width:0;max-width:100%;display:inline-flex;align-items:center;gap:7px;padding:4px 8px;border:1px solid #334967;border-radius:999px;background:#101f37;color:#dbe9fc;font-size:11px;line-height:1;overflow:hidden}
+.agent-badge>i{width:6px;height:6px;flex:0 0 auto;border-radius:50%;background:#4f8cff}
+.agent-badge>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agent-badge.root{border-color:#46546a;background:#101a2b;color:#aab9cc}
+.agent-badge.root>i{background:#7a8ba6}
+@media (max-width:900px){.file-table-head,.file-row,.full-pane .file-table-head,.full-pane .file-row{grid-template-columns:22px 70px minmax(72px,1fr) 50px 20px}.file-table-head>span:nth-child(5),.file-row>span:nth-child(5){display:none}}
+
+/* Catalog DB: fixed semantic columns prevent long host names and UUIDs from colliding. */
+.catalog-table{overflow:auto}
+.catalog-table .file-table-head,.catalog-table .file-row{min-width:920px;grid-template-columns:108px 130px minmax(190px,1fr) 300px 110px 30px;gap:12px}
+.catalog-table .file-table-head{padding:0 14px}
+.catalog-table .file-row{min-height:52px;padding:7px 14px;line-height:1.35}
+.catalog-table .file-row>*,.catalog-table .file-table-head>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.catalog-table .file-row>span:first-child{font-size:10px;font-weight:700;letter-spacing:.04em;color:#83e2ad}
+.catalog-table .file-row.selected>span:first-child{color:#ffb2aa}
+.catalog-table .file-row>span:nth-child(3){color:#e0e9f7}
+.catalog-table .file-row>span:nth-child(4){font:10px ui-monospace,SFMono-Regular,Consolas,monospace;color:#9eb0c9}
+.catalog-table .file-row>span:nth-child(5){color:#9eb0c9}
+.catalog-table .reveal-button{justify-self:end}
+@media (max-width:900px){.catalog-table .file-table-head,.catalog-table .file-row{min-width:820px;grid-template-columns:96px 110px minmax(170px,1fr) 270px 90px 30px}.catalog-table .file-row{min-height:48px}}
+.catalog-modal-id{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:10px ui-monospace,SFMono-Regular,Consolas,monospace;color:#9eb0c9}
+.modal code{color:#d6e4f8;font:11px ui-monospace,SFMono-Regular,Consolas,monospace}
+.catalog-table .catalog-sort{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:7px;padding:0;border:0;background:transparent;color:#aebed3;font-size:12px;font-weight:700;text-align:left;cursor:pointer}
+.catalog-table .catalog-sort:hover{color:#78aaff}
+.catalog-table .catalog-sort span{color:#6f8db9;font-size:10px}
