@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './context.css';
 import './file-table.css';
-import { apiCatalog, apiContext, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiScan, apiSettings } from './backend.js';
+import { apiCancelScan, apiCatalog, apiContext, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSettings } from './backend.js';
 
 const icons = {
   archive: 'M4 7h16M5 7v12h14V7M8 4h8l1 3H7l1-3',
@@ -73,10 +73,10 @@ function Sidebar({ view, setView, onScan, queueCount }) {
   const settings = [['locations', 'Storage locations', 'folder'], ['filters', 'Filters', 'filter'], ['preferences', 'Preferences', 'settings']];
   return <aside className="sidebar"><div className="brand"><span className="brand-mark"><Icon name="archive" size={19} /></span><span>Session Shelf</span></div><div className="side-scroll"><nav className="side-nav">{primary.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav><div className="nav-heading">Actions</div><nav className="side-nav"><button className="nav-item" onClick={onScan}><Icon name="refresh" /><span>Scan sessions</span></button><button className={'nav-item ' + (view === 'queue' ? 'active' : '')} onClick={() => setView('queue')}><Icon name="archive" /><span>Review queue</span>{queueCount > 0 && <span className="nav-count">{queueCount}</span>}</button><button className={'nav-item ' + (view === 'recycle' ? 'active' : '')} onClick={() => setView('recycle')}><Icon name="trash" /><span>Recycle Bin</span></button></nav><div className="nav-heading">Settings</div><nav className="side-nav">{settings.map(([id, label, icon]) => <button key={id} className={'nav-item ' + (view === id ? 'active' : '')} onClick={() => setView(id)}><Icon name={icon} /><span>{label}</span></button>)}</nav></div></aside>;
 }
-function Header({ data, onScan, scanning, view }) {
+function Header({ data, onScan, onCancel, scanning, scanStatus, view }) {
   const labels = { overview: 'Overview', roots: 'Active sessions', archived: 'Archived sessions', all: 'All files', catalog: 'Catalog DB', queue: 'Review queue', recycle: 'Recycle Bin', locations: 'Storage locations', filters: 'Filters', preferences: 'Preferences' };
   const icon = view === 'roots' ? 'folder' : view === 'all' ? 'file' : view === 'catalog' ? 'database' : view === 'recycle' ? 'trash' : view === 'locations' ? 'folder' : view === 'filters' ? 'filter' : view === 'preferences' ? 'settings' : 'archive';
-  return <header className="topbar"><div className="topbar-title"><Icon name={icon} size={23} /><span>{labels[view] || 'Session Shelf'}</span></div><div className="topbar-stats"><div className="stat-emphasis"><Icon name="database" size={22} /><strong>{data ? formatGiB(data.stats.totalBytes) : '—'}</strong></div><span>{data ? data.stats.fileCount + ' files' : 'Scanning'}</span></div><div className="topbar-actions"><Button icon="refresh" onClick={onScan} disabled={scanning}>{scanning ? 'Scanning...' : 'Scan sessions'}</Button><span className={'scan-state ' + (scanning ? 'scanning' : '')}><Icon name={scanning ? 'refresh' : 'check'} size={16} />{scanning ? 'Reading JSONL metadata' : data ? 'Scanned ' + formatDate(data.scannedAt) : 'Waiting'}</span><Icon name="settings" size={20} /></div></header>;
+  return <header className="topbar"><div className="topbar-title"><Icon name={icon} size={23} /><span>{labels[view] || 'Session Shelf'}</span></div><div className="topbar-stats"><div className="stat-emphasis"><Icon name="database" size={22} /><strong>{data ? formatGiB(data.stats.totalBytes) : '—'}</strong></div><span>{data ? data.stats.fileCount + ' files' : 'Scanning'}</span></div><div className="topbar-actions"><Button icon="refresh" onClick={onScan} disabled={scanning}>{scanning ? 'Scanning...' : 'Scan sessions'}</Button>{scanning && scanStatus?.cancelable && <Button icon="x" onClick={onCancel}>Cancel scan</Button>}<span className={'scan-state ' + (scanning ? 'scanning' : '')}><Icon name={scanning ? 'refresh' : 'check'} size={16} />{scanning ? (scanStatus?.phase || 'Reading JSONL metadata') + (scanStatus?.filesTotal ? ' · ' + scanStatus.filesCompleted + '/' + scanStatus.filesTotal : '') : data ? 'Scanned ' + formatDate(data.scannedAt) : 'Waiting'}</span><Icon name="settings" size={20} /></div></header>;
 }
 function SearchTools({ query, setQuery, sort, setSort, filters, setFilters, agents }) {
   const sortKey = typeof sort === 'string' ? sort === 'name' ? 'title' : sort === 'recent' ? 'lastActivity' : sort === 'files' ? 'fileCount' : 'sizeBytes' : sort.key;
@@ -106,10 +106,14 @@ function ContextPreview({ group, context, loading, error, loadContext }) {
   const messages = active ? context.messages : [];
   return <section className="context-preview"><div className="context-window-bar"><div className="context-window-ident"><span className="context-window-icon"><Icon name="message" size={15} /></span><div><strong>{group.title}</strong><span>{shortId(group.rootId)} · stored transcript</span></div></div><button className="context-action" onClick={() => loadContext(group.rootPath)} disabled={loading}><Icon name="message" size={15} />{loading && active ? 'Reading...' : active ? 'Refresh' : 'Preview messages'}</button></div>{loading && active ? <div className="context-state">Reading the first messages...</div> : error && active ? <div className="context-state context-error">{error}</div> : active && messages.length ? <div className="context-thread">{messages.map((message, index) => <article className={'context-message ' + message.role} key={message.role + '-' + index}><div className="context-message-meta"><span className={'context-avatar ' + message.role}>{message.role === 'user' ? 'Y' : 'C'}</span><strong>{message.role === 'user' ? 'You' : 'Codex'}</strong><span className="context-message-index">{index + 1}/{messages.length}</span></div><div className="context-bubble"><p>{message.text}</p></div></article>)}</div> : active ? <div className="context-state">No user or assistant messages were found in the preview window.</div> : <div className="context-state">Load a small preview before deciding whether this root is worth keeping.</div>}{active && !loading && messages.length > 0 && <div className="context-note">{context.limited ? 'Showing the first ' + messages.length + ' messages; the transcript stays untouched.' : 'Reached the end of this transcript preview.'}</div>}</section>;
 }
-function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGroup, review, reveal, previewLimit }) {
+function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGroup, review, reveal, previewLimit, onAlias }) {
   const [context, setContext] = useState(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState('');
+  const [aliasEditing, setAliasEditing] = useState(false);
+  const [aliasDraft, setAliasDraft] = useState('');
+  const [aliasError, setAliasError] = useState('');
+  const [aliasBusy, setAliasBusy] = useState(false);
   const loadContext = useCallback(async (filePath) => {
     setContext({ path: filePath, messages: [], limited: false });
     setContextError('');
@@ -124,9 +128,15 @@ function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGrou
     }
   }, [previewLimit]);
   useEffect(() => { if (group?.rootPath) loadContext(group.rootPath); }, [group?.rootPath, previewLimit, loadContext]);
+  useEffect(() => { setAliasDraft(group?.title || ''); setAliasEditing(false); setAliasError(''); }, [group?.rootId, group?.title]);
+  async function saveAlias() {
+    setAliasBusy(true);
+    setAliasError('');
+    try { await onAlias(group.rootId, aliasDraft); setAliasEditing(false); } catch (error) { setAliasError(error.message); } finally { setAliasBusy(false); }
+  }
   if (!group) return <aside className="inspector empty-inspector"><div className="empty-illustration"><Icon name="branch" size={30} /></div><h2>Choose a conversation root</h2><p>Select a group to see its forked files, lineage, and reclaimable space.</p></aside>;
   const selectedInGroup = group.files.filter(file => selectedPaths.has(file.path)).length;
-  return <aside className="inspector"><div className="inspector-top"><div><h1>{group.title}</h1><p className="inspector-size">{formatGiB(group.sizeBytes)} <span>reclaimable</span></p></div><span className="file-count"><strong>{group.fileCount}</strong><small>files</small></span></div><Button variant="primary" icon="archive" onClick={review} disabled={!selectedInGroup || kept}>Review {selectedInGroup || group.fileCount} files</Button><div className="detail-block"><div className="detail-row"><span>Root thread</span><strong className="copyable" title={group.rootId}>{shortId(group.rootId)} <Icon name="copy" size={14} /></strong></div><div className="detail-row"><span>Codex title</span><strong>{group.title}</strong></div><div className="detail-row"><span>First request</span><strong className="detail-prompt" title={group.prompt}>{promptPreview(group.prompt) || 'No user prompt found'}</strong></div><div className="detail-row"><span>Forked agents</span><div className="agent-list">{group.agents.length ? group.agents.map(agent => <span className="agent-chip" key={agent}><i />{agent}</span>) : <span className="muted">No named agents</span>}</div></div><div className="detail-row"><span>Last activity</span><strong>{formatDate(group.lastActivity)}</strong></div><div className="detail-row"><span>File count</span><strong>{group.fileCount} JSONL files</strong></div><div className="detail-row"><span>Location</span><strong className="path-text" title={group.cwd}>{group.cwd || 'Unknown'}</strong></div></div><ContextPreview group={group} context={context} loading={contextLoading} error={contextError} loadContext={loadContext} /><div className="forked-heading"><h2>Forked files <span>({group.fileCount})</span></h2><label><input type="checkbox" checked={selectedInGroup === group.fileCount} onChange={() => toggleGroup(group)} /> Select all</label></div><FileTable files={group.files} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /><div className="safe-zone"><div className="review-box"><Icon name={kept ? 'check' : 'unlock'} size={20} /><div><strong>{kept ? 'Conversation kept' : 'Review required'}</strong><span>{kept ? 'This root is excluded from the review queue.' : 'Review the selected files before they can move to the Recycle Bin.'}</span></div></div><label className="keep-toggle"><input type="checkbox" checked={kept} onChange={event => setKept(event.target.checked)} /><span><strong>Keep this conversation</strong><small>Exclude from deletion</small></span></label><Button variant="danger" icon="trash" onClick={review} disabled={!selectedInGroup || kept}>Move selected to Recycle Bin</Button><div className="selection-foot"><span>{selectedInGroup} of {group.fileCount} files selected</span><span>{formatBytes(group.files.filter(file => selectedPaths.has(file.path)).reduce((sum, file) => sum + file.sizeBytes, 0))}</span></div></div></aside>;
+  return <aside className="inspector"><div className="inspector-top"><div><h1>{group.title}</h1><p className="inspector-size">{formatGiB(group.sizeBytes)} <span>reclaimable</span></p></div><span className="file-count"><strong>{group.fileCount}</strong><small>files</small></span></div><Button variant="primary" icon="archive" onClick={review} disabled={!selectedInGroup || kept}>Review {selectedInGroup || group.fileCount} files</Button><div className="detail-block"><div className="detail-row"><span>Root thread</span><strong className="copyable" title={group.rootId}>{shortId(group.rootId)} <Icon name="copy" size={14} /></strong></div><div className="detail-row"><span>Codex title</span><div className="title-value"><strong>{group.title}</strong><button className="title-edit" onClick={() => { setAliasDraft(group.title); setAliasEditing(true); }}>Rename</button></div></div>{aliasEditing && <div className="alias-editor"><input value={aliasDraft} onChange={event => setAliasDraft(event.target.value)} maxLength={120} autoFocus /><div><Button onClick={() => setAliasEditing(false)} disabled={aliasBusy}>Cancel</Button><Button variant="primary" onClick={saveAlias} disabled={aliasBusy}>{aliasBusy ? 'Saving...' : 'Save alias'}</Button></div>{aliasError && <small>{aliasError}</small>}</div>}<div className="detail-row"><span>First request</span><strong className="detail-prompt" title={group.prompt}>{promptPreview(group.prompt) || 'No user prompt found'}</strong></div><div className="detail-row"><span>Forked agents</span><div className="agent-list">{group.agents.length ? group.agents.map(agent => <span className="agent-chip" key={agent}><i />{agent}</span>) : <span className="muted">No named agents</span>}</div></div><div className="detail-row"><span>Last activity</span><strong>{formatDate(group.lastActivity)}</strong></div><div className="detail-row"><span>File count</span><strong>{group.fileCount} JSONL files</strong></div><div className="detail-row"><span>Location</span><strong className="path-text" title={group.cwd}>{group.cwd || 'Unknown'}</strong></div></div><ContextPreview group={group} context={context} loading={contextLoading} error={contextError} loadContext={loadContext} /><div className="forked-heading"><h2>Forked files <span>({group.fileCount})</span></h2><label><input type="checkbox" checked={selectedInGroup === group.fileCount} onChange={() => toggleGroup(group)} /> Select all</label></div><FileTable files={group.files} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} /><div className="safe-zone"><div className="review-box"><Icon name={kept ? 'check' : 'unlock'} size={20} /><div><strong>{kept ? 'Conversation kept' : 'Review required'}</strong><span>{kept ? 'This root is excluded from the review queue.' : 'Review the selected files before they can move to the Recycle Bin.'}</span></div></div><label className="keep-toggle"><input type="checkbox" checked={kept} onChange={event => setKept(event.target.checked)} /><span><strong>Keep this conversation</strong><small>Exclude from deletion</small></span></label><Button variant="danger" icon="trash" onClick={review} disabled={!selectedInGroup || kept}>Move selected to Recycle Bin</Button><div className="selection-foot"><span>{selectedInGroup} of {group.fileCount} files selected</span><span>{formatBytes(group.files.filter(file => selectedPaths.has(file.path)).reduce((sum, file) => sum + file.sizeBytes, 0))}</span></div></div></aside>;
 }
 function AllFilesView({ files, selectedPaths, toggleFile, reveal, query, setQuery }) {
   const visible = files.filter(file => (file.name + ' ' + file.groupTitle + ' ' + file.agent + ' ' + file.rootId).toLowerCase().includes(query.toLowerCase()));
@@ -226,6 +236,7 @@ function App() {
   const [data, setData] = useState(null);
   const [view, setViewState] = useState(() => localStorage.getItem('session-shelf.view') || 'roots');
   const [scanning, setScanning] = useState(false);
+  const [scanStatus, setScanStatus] = useState(null);
   const [error, setError] = useState('');
   const [selectedRootKey, setSelectedRootKey] = useState('');
   const [selectedPaths, setSelectedPaths] = useState(new Set());
@@ -257,6 +268,14 @@ function App() {
   }, [preferences.includeArchived]);
   useEffect(() => { scan(); }, [scan]);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(''), 5000); return () => clearTimeout(timer); }, [toast]);
+  useEffect(() => {
+    if (!scanning) return undefined;
+    let active = true;
+    const poll = () => { apiScanStatus().then(status => { if (active) setScanStatus(status); }).catch(() => {}); };
+    poll();
+    const timer = setInterval(poll, 400);
+    return () => { active = false; clearInterval(timer); };
+  }, [scanning]);
   const activeArchived = view === 'archived';
   const activeGroups = activeArchived ? (data?.archivedGroups || []) : (data?.groups || []);
   const availableAgents = useMemo(() => [...new Set([...(data?.groups || []), ...(data?.archivedGroups || [])].flatMap(group => group.agents || []))].sort((left, right) => left.localeCompare(right)), [data]);
@@ -285,6 +304,18 @@ function App() {
   }
   async function reveal(filePath) {
     try { await apiReveal(filePath); } catch {}
+  }
+  async function cancelScan() {
+    try { await apiCancelScan(); } catch (cancelError) { setError(cancelError.message); }
+  }
+  async function saveAlias(rootId, title) {
+    const result = await apiSaveTitleAlias(rootId, title);
+    if (!result.title) {
+      await scan();
+      return;
+    }
+    const applyAlias = group => group.rootId === rootId ? { ...group, title: result.title, titleSource: result.title ? 'Manual alias' : group.titleSource, files: group.files.map(file => ({ ...file, groupTitle: result.title || file.groupTitle })) } : group;
+    setData(current => current ? { ...current, groups: (current.groups || []).map(applyAlias), archivedGroups: (current.archivedGroups || []).map(applyAlias), roots: (current.roots || []).map(root => ({ ...root, groups: (root.groups || []).map(applyAlias), files: (root.files || []).map(file => file.rootId === rootId ? { ...file, groupTitle: result.title || file.groupTitle } : file) })), files: (current.files || []).map(file => file.rootId === rootId ? { ...file, groupTitle: result.title || file.groupTitle } : file) } : current);
   }
   async function prepareReview(files, cleanup) {
     setReviewFiles(files);
@@ -332,7 +363,7 @@ function App() {
       setMoving(false);
     }
   }
-  const rootView = <><RootList groups={visibleGroups} selectedGroup={selectedGroup} selectedPaths={selectedPaths} setSelectedGroup={group => setSelectedRootKey(group.key || group.rootId)} toggleGroup={toggleGroup} query={rootQuery} setQuery={setRootQuery} sort={rootSort} setSort={setRootSort} archived={activeArchived} filters={filters} setFilters={setFilters} agents={availableAgents} /><Inspector group={selectedGroup} selectedPaths={selectedPaths} kept={selectedGroup ? keptRoots.has(selectedGroup.key || selectedGroup.rootId) : false} setKept={setKept} toggleFile={toggleFile} toggleGroup={toggleGroup} review={review} reveal={reveal} previewLimit={preferences.previewLimit} /></>;
+  const rootView = <><RootList groups={visibleGroups} selectedGroup={selectedGroup} selectedPaths={selectedPaths} setSelectedGroup={group => setSelectedRootKey(group.key || group.rootId)} toggleGroup={toggleGroup} query={rootQuery} setQuery={setRootQuery} sort={rootSort} setSort={setRootSort} archived={activeArchived} filters={filters} setFilters={setFilters} agents={availableAgents} /><Inspector group={selectedGroup} selectedPaths={selectedPaths} kept={selectedGroup ? keptRoots.has(selectedGroup.key || selectedGroup.rootId) : false} setKept={setKept} toggleFile={toggleFile} toggleGroup={toggleGroup} review={review} reveal={reveal} previewLimit={preferences.previewLimit} onAlias={saveAlias} /></>;
   let content = rootView;
   if (view === 'overview') content = <Overview data={data} />;
   if (view === 'all') content = <AllFilesView files={data?.files || []} selectedPaths={selectedPaths} toggleFile={toggleFile} reveal={reveal} query={allQuery} setQuery={setAllQuery} />;
@@ -343,6 +374,6 @@ function App() {
   if (view === 'filters') content = <FiltersView filters={filters} setFilters={setFilters} agents={availableAgents} />;
   if (view === 'preferences') content = <PreferencesView preferences={preferences} updatePreferences={updatePreferences} />;
   const browsingRoots = view === 'roots' || view === 'archived';
-  return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} scanning={scanning} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} safety={recycleReview} onClose={() => { setReviewFiles(null); setRecycleReview(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} reviewBusy={reviewBusy} removeCatalogRows={removeCatalogRows} onCleanupChange={changeCleanup} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
+  return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} onCancel={cancelScan} scanning={scanning} scanStatus={scanStatus} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} safety={recycleReview} onClose={() => { setReviewFiles(null); setRecycleReview(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} reviewBusy={reviewBusy} removeCatalogRows={removeCatalogRows} onCleanupChange={changeCleanup} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
 }
 createRoot(document.getElementById('root')).render(<App/>);

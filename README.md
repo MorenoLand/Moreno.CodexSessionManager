@@ -28,7 +28,7 @@ Open `http://127.0.0.1:4310/`. `npm start` is an equivalent direct run command. 
 ```sh
 npm ci
 npm run build
-wails3 generate bindings -b
+wails3 generate bindings
 wails3 dev
 ```
 
@@ -71,6 +71,8 @@ Override locations per process when the Codex installation uses a different layo
 - **Preferences** controls whether archived sessions are included in scans and how many preview messages are loaded when a session is selected.
 - **Filters** applies minimum size, minimum file count, agent, and fork-only filters to both session tables.
 - **Storage locations** edits the absolute current-session, archived-session, and Catalog DB paths and saves them persistently.
+- **Rename** creates a local title alias when the Codex catalog title is missing or noisy; aliases are stored separately from transcripts.
+- The Wails backend keeps a metadata-only scan index and exposes cache hits, scan progress, and cancellation for large storage trees.
 - Global chrome does not display full filesystem paths; those remain available on the Storage locations page.
 
 ## Safety model
@@ -78,7 +80,9 @@ Override locations per process when the Codex installation uses a different layo
 - Scanning reads JSONL metadata only; transcript previews read only the selected root on demand.
 - Current and archived sessions are scanned separately and can be reviewed with the same grouping and preview workflow.
 - The move dialog requires typing `MOVE`.
+- Every move runs a fresh size/mtime/path/access preflight against the latest scan and blocks changed or unscanned files.
 - The optional **Remove matching Catalog DB entries** checkbox is off by default. When enabled, Session Shelf removes only UUIDs belonging to files that successfully reached system trash, in one transactional database operation.
+- Catalog cleanup creates a timestamped SQLite backup before any row mutation; the backup is preserved even if a later cleanup step fails.
 - Catalog rows are never removed automatically during a scan. The Catalog DB page requires an explicit `REMOVE` confirmation for orphaned metadata rows.
 - The app never deletes an entire directory and does not treat a build or scan as permission to modify the Codex database.
 

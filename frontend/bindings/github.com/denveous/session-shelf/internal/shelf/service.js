@@ -34,11 +34,20 @@ export function GetCatalog() {
 }
 
 /**
+ * @returns {$CancellablePromise<$models.ScanStatus>}
+ */
+export function GetScanStatus() {
+    return $Call.ByID(1054991018).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
+}
+
+/**
  * @returns {$CancellablePromise<$models.StorageSettings>}
  */
 export function GetSettings() {
     return $Call.ByID(125815944).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
+        return $$createType2($result);
     }));
 }
 
@@ -49,7 +58,7 @@ export function GetSettings() {
  */
 export function Preview(filename, limit) {
     return $Call.ByID(4119986269, filename, limit).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+        return $$createType3($result);
     }));
 }
 
@@ -60,7 +69,7 @@ export function Preview(filename, limit) {
  */
 export function Recycle(paths, removeCatalogRows) {
     return $Call.ByID(2162376516, paths, removeCatalogRows).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType3($result);
+        return $$createType4($result);
     }));
 }
 
@@ -71,7 +80,7 @@ export function Recycle(paths, removeCatalogRows) {
  */
 export function RemoveCatalogRows(confirm, threadIDs) {
     return $Call.ByID(290244671, confirm, threadIDs).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType4($result);
+        return $$createType5($result);
     }));
 }
 
@@ -90,7 +99,7 @@ export function Reveal(filename) {
  */
 export function ReviewRecycle(paths, removeCatalogRows) {
     return $Call.ByID(4037232220, paths, removeCatalogRows).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType5($result);
+        return $$createType6($result);
     }));
 }
 
@@ -100,7 +109,18 @@ export function ReviewRecycle(paths, removeCatalogRows) {
  */
 export function SaveSettings(update) {
     return $Call.ByID(3183783763, update).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
+        return $$createType2($result);
+    }));
+}
+
+/**
+ * @param {string} rootID
+ * @param {string} title
+ * @returns {$CancellablePromise<$models.TitleAlias>}
+ */
+export function SaveTitleAlias(rootID, title) {
+    return $Call.ByID(956741884, rootID, title).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType7($result);
     }));
 }
 
@@ -110,15 +130,17 @@ export function SaveSettings(update) {
  */
 export function Scan(includeArchived) {
     return $Call.ByID(1387378682, includeArchived).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType6($result);
+        return $$createType8($result);
     }));
 }
 
 // Private type creation functions
 const $$createType0 = $models.CatalogView.createFrom;
-const $$createType1 = $models.StorageSettings.createFrom;
-const $$createType2 = $models.ContextPreview.createFrom;
-const $$createType3 = $models.RecycleResponse.createFrom;
-const $$createType4 = $models.CatalogMutation.createFrom;
-const $$createType5 = $models.RecycleReview.createFrom;
-const $$createType6 = $models.ScanResult.createFrom;
+const $$createType1 = $models.ScanStatus.createFrom;
+const $$createType2 = $models.StorageSettings.createFrom;
+const $$createType3 = $models.ContextPreview.createFrom;
+const $$createType4 = $models.RecycleResponse.createFrom;
+const $$createType5 = $models.CatalogMutation.createFrom;
+const $$createType6 = $models.RecycleReview.createFrom;
+const $$createType7 = $models.TitleAlias.createFrom;
+const $$createType8 = $models.ScanResult.createFrom;

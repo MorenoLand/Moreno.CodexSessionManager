@@ -114,3 +114,41 @@ func TestRemoveCatalogRowsCreatesBackup(t *testing.T) {
 		t.Fatalf("expected backup to retain deleted row, got %d", count)
 	}
 }
+
+func TestScanUsesMetadataIndexAndTitleAlias(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(root, "archive")
+	config := filepath.Join(root, "config")
+	filename := filepath.Join(root, "rollout-2026-08-20-01a01cc5-38a6-7431-bb4c-965672f007f6.jsonl")
+	if err := os.MkdirAll(archive, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filename, []byte("{\"timestamp\":\"2026-08-20T12:00:00Z\",\"cwd\":\"C:\\\\work\",\"agent_nickname\":\"Maxwell\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{currentRoot: root, archivedRoot: archive, catalogDB: filepath.Join(root, "catalog.db"), indexPath: filepath.Join(config, "index.json"), aliasesPath: filepath.Join(config, "aliases.json"), defaults: StorageLocations{CurrentRoot: root, ArchivedRoot: archive, CatalogDB: filepath.Join(root, "catalog.db")}, lastScan: map[string]scanSnapshot{}, scanIndex: map[string]scanIndexEntry{}, aliases: map[string]string{}}
+	first, err := service.Scan(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.IndexHits != 0 || first.IndexMisses != 1 {
+		t.Fatalf("expected first scan to miss index: %+v", first)
+	}
+	second, err := service.Scan(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.IndexHits != 1 || second.IndexMisses != 0 {
+		t.Fatalf("expected second scan to hit index: %+v", second)
+	}
+	if _, err := service.SaveTitleAlias("01a01cc5-38a6-7431-bb4c-965672f007f6", "Dibblerland2"); err != nil {
+		t.Fatal(err)
+	}
+	third, err := service.Scan(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(third.Groups) != 1 || third.Groups[0].Title != "Dibblerland2" || third.Groups[0].TitleSource != "Manual alias" {
+		t.Fatalf("expected alias to override title: %+v", third.Groups)
+	}
+}

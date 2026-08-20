@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	uuidPattern = regexp.MustCompile(`(?i)([0-9a-f-]{36})`)
+	uuidPattern = regexp.MustCompile(`(?i)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
 	tagPattern  = regexp.MustCompile(`(?is)<(recommended_plugins|environment_context|app-context)>.*?</(recommended_plugins|environment_context|app-context)>`)
 )
 
@@ -102,6 +102,8 @@ type ScanResult struct {
 	Root           string        `json:"root"`
 	ArchivedRoot   string        `json:"archivedRoot"`
 	ScannedAt      string        `json:"scannedAt"`
+	IndexHits      int           `json:"indexHits"`
+	IndexMisses    int           `json:"indexMisses"`
 	Stats          Stats         `json:"stats"`
 	CurrentStats   Stats         `json:"currentStats"`
 	ArchivedStats  Stats         `json:"archivedStats"`
@@ -109,6 +111,17 @@ type ScanResult struct {
 	Groups         []Group       `json:"groups"`
 	ArchivedGroups []Group       `json:"archivedGroups"`
 	Files          []SessionFile `json:"files"`
+}
+
+type ScanStatus struct {
+	Running        bool   `json:"running"`
+	Cancelable     bool   `json:"cancelable"`
+	Phase          string `json:"phase"`
+	FilesTotal     int    `json:"filesTotal"`
+	FilesCompleted int    `json:"filesCompleted"`
+	IndexHits      int    `json:"indexHits"`
+	IndexMisses    int    `json:"indexMisses"`
+	Cancelled      bool   `json:"cancelled"`
 }
 
 type ContextMessage struct {
@@ -206,6 +219,22 @@ type scanSnapshot struct {
 	LastModified string
 }
 
+type scanIndexEntry struct {
+	SizeBytes    int64
+	LastModified string
+	File         SessionFile
+}
+
+type scanIndexFile struct {
+	Version int                       `json:"version"`
+	Files   map[string]scanIndexEntry `json:"files"`
+}
+
+type TitleAlias struct {
+	RootID string `json:"rootId"`
+	Title  string `json:"title"`
+}
+
 type sessionSource struct {
 	Key      string
 	Label    string
@@ -219,11 +248,16 @@ type Service struct {
 	archivedRoot string
 	catalogDB    string
 	settingsPath string
+	indexPath    string
+	aliasesPath  string
 	defaults     StorageLocations
 	scanMu       sync.Mutex
 	cancelMu     sync.Mutex
 	cancel       context.CancelFunc
 	lastScan     map[string]scanSnapshot
+	scanIndex    map[string]scanIndexEntry
+	aliases      map[string]string
+	scanStatus   ScanStatus
 }
 
 func NewService() (*Service, error) {
@@ -255,8 +289,10 @@ func NewService() (*Service, error) {
 	} else if value := os.Getenv("XDG_CONFIG_HOME"); value != "" {
 		configDir = filepath.Join(value, "session-shelf")
 	}
-	service := &Service{currentRoot: defaultLocations.CurrentRoot, archivedRoot: defaultLocations.ArchivedRoot, catalogDB: defaultLocations.CatalogDB, settingsPath: filepath.Join(configDir, "settings.json"), defaults: defaultLocations, lastScan: map[string]scanSnapshot{}}
+	service := &Service{currentRoot: defaultLocations.CurrentRoot, archivedRoot: defaultLocations.ArchivedRoot, catalogDB: defaultLocations.CatalogDB, settingsPath: filepath.Join(configDir, "settings.json"), indexPath: filepath.Join(configDir, "index.json"), aliasesPath: filepath.Join(configDir, "aliases.json"), defaults: defaultLocations, lastScan: map[string]scanSnapshot{}, scanIndex: map[string]scanIndexEntry{}, aliases: map[string]string{}}
 	service.loadStoredSettings()
+	service.loadScanIndex()
+	service.loadAliases()
 	return service, nil
 }
 
@@ -367,6 +403,111 @@ func writeAtomic(filename string, data []byte) error {
 	return os.Rename(temporaryName, filename)
 }
 
+func (s *Service) loadScanIndex() {
+	data, err := os.ReadFile(s.indexPath)
+	if err != nil {
+		return
+	}
+	var stored scanIndexFile
+	if json.Unmarshal(data, &stored) == nil && stored.Version == 1 && stored.Files != nil {
+		s.scanIndex = stored.Files
+	}
+}
+
+func (s *Service) saveScanIndex(index map[string]scanIndexEntry) error {
+	data, err := json.Marshal(scanIndexFile{Version: 1, Files: index})
+	if err != nil {
+		return err
+	}
+	return writeAtomic(s.indexPath, append(data, '\n'))
+}
+
+func (s *Service) scanIndexSnapshot() map[string]scanIndexEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make(map[string]scanIndexEntry, len(s.scanIndex))
+	for key, entry := range s.scanIndex {
+		result[key] = entry
+	}
+	return result
+}
+
+func (s *Service) loadAliases() {
+	data, err := os.ReadFile(s.aliasesPath)
+	if err != nil {
+		return
+	}
+	var stored map[string]string
+	if json.Unmarshal(data, &stored) == nil {
+		for rootID, title := range stored {
+			title = strings.TrimSpace(title)
+			if uuidPattern.MatchString(rootID) && title != "" {
+				s.aliases[strings.ToLower(rootID)] = title
+			}
+		}
+	}
+}
+
+func (s *Service) SaveTitleAlias(rootID, title string) (TitleAlias, error) {
+	rootID = strings.ToLower(strings.TrimSpace(rootID))
+	if !uuidPattern.MatchString(rootID) {
+		return TitleAlias{}, errors.New("Root thread ID is invalid")
+	}
+	title = strings.Join(strings.Fields(title), " ")
+	if len([]rune(title)) > 120 {
+		title = string([]rune(title)[:120])
+	}
+	s.mu.Lock()
+	previous := s.aliases[rootID]
+	if title == "" {
+		delete(s.aliases, rootID)
+	} else {
+		s.aliases[rootID] = title
+	}
+	stored := make(map[string]string, len(s.aliases))
+	for key, value := range s.aliases {
+		stored[key] = value
+	}
+	s.mu.Unlock()
+	data, err := json.MarshalIndent(stored, "", "  ")
+	if err != nil {
+		return TitleAlias{}, err
+	}
+	if err := writeAtomic(s.aliasesPath, append(data, '\n')); err != nil {
+		s.mu.Lock()
+		if previous == "" {
+			delete(s.aliases, rootID)
+		} else {
+			s.aliases[rootID] = previous
+		}
+		s.mu.Unlock()
+		return TitleAlias{}, err
+	}
+	return TitleAlias{RootID: rootID, Title: title}, nil
+}
+
+func (s *Service) aliasSnapshot() map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make(map[string]string, len(s.aliases))
+	for key, value := range s.aliases {
+		result[key] = value
+	}
+	return result
+}
+
+func (s *Service) updateScanStatus(update func(*ScanStatus)) {
+	s.mu.Lock()
+	update(&s.scanStatus)
+	s.mu.Unlock()
+}
+
+func (s *Service) GetScanStatus() ScanStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.scanStatus
+}
+
 func samePath(left, right string) bool {
 	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
 }
@@ -375,6 +516,9 @@ func (s *Service) Scan(includeArchived bool) (ScanResult, error) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
+	s.updateScanStatus(func(status *ScanStatus) {
+		*status = ScanStatus{Running: true, Cancelable: true, Phase: "Loading session index"}
+	})
 	s.cancelMu.Lock()
 	s.cancel = cancel
 	s.cancelMu.Unlock()
@@ -385,15 +529,29 @@ func (s *Service) Scan(includeArchived bool) (ScanResult, error) {
 		s.cancelMu.Unlock()
 	}()
 	locations := s.locations()
+	cache := s.scanIndexSnapshot()
+	nextIndex := make(map[string]scanIndexEntry)
 	titles := s.loadCatalogTitles()
+	aliases := s.aliasSnapshot()
 	sources := []sessionSource{{Key: "current", Label: "Current sessions", Path: locations.CurrentRoot}, {Key: "archived", Label: "Archived sessions", Path: locations.ArchivedRoot, Archived: true}}
 	if !includeArchived {
 		sources = sources[:1]
 	}
 	roots := make([]ScanRoot, len(sources))
 	for index, source := range sources {
-		root, err := s.scanRoot(ctx, source, titles)
+		s.updateScanStatus(func(status *ScanStatus) { status.Phase = source.Label })
+		root, err := s.scanRoot(ctx, source, titles, aliases, cache, nextIndex)
 		if err != nil {
+			cancelled := errors.Is(err, context.Canceled)
+			s.updateScanStatus(func(status *ScanStatus) {
+				status.Running = false
+				status.Cancelable = false
+				status.Cancelled = cancelled
+				status.Phase = ""
+			})
+			if cancelled {
+				return ScanResult{}, errors.New("Scan cancelled")
+			}
 			return ScanResult{}, err
 		}
 		roots[index] = root
@@ -417,7 +575,8 @@ func (s *Service) Scan(includeArchived bool) (ScanResult, error) {
 			currentStats = root.Stats
 		}
 	}
-	result := ScanResult{Root: locations.CurrentRoot, ArchivedRoot: locations.ArchivedRoot, ScannedAt: time.Now().UTC().Format(time.RFC3339Nano), Stats: makeStats(len(files), totalBytes, len(groups)), CurrentStats: currentStats, ArchivedStats: archivedStats, Roots: roots, Files: files}
+	status := s.GetScanStatus()
+	result := ScanResult{Root: locations.CurrentRoot, ArchivedRoot: locations.ArchivedRoot, ScannedAt: time.Now().UTC().Format(time.RFC3339Nano), IndexHits: status.IndexHits, IndexMisses: status.IndexMisses, Stats: makeStats(len(files), totalBytes, len(groups)), CurrentStats: currentStats, ArchivedStats: archivedStats, Roots: roots, Files: files}
 	for _, root := range roots {
 		if root.Archived {
 			result.ArchivedGroups = root.Groups
@@ -431,7 +590,15 @@ func (s *Service) Scan(includeArchived bool) (ScanResult, error) {
 	}
 	s.mu.Lock()
 	s.lastScan = snapshots
+	s.scanIndex = nextIndex
 	s.mu.Unlock()
+	_ = s.saveScanIndex(nextIndex)
+	s.updateScanStatus(func(status *ScanStatus) {
+		status.Running = false
+		status.Cancelable = false
+		status.Cancelled = false
+		status.Phase = "Complete"
+	})
 	return result, nil
 }
 
@@ -449,7 +616,7 @@ func makeStats(fileCount int, totalBytes int64, groupCount int) Stats {
 	return Stats{FileCount: fileCount, TotalBytes: totalBytes, TotalGiB: float64(totalBytes) / (1024 * 1024 * 1024), GroupCount: groupCount}
 }
 
-func (s *Service) scanRoot(ctx context.Context, source sessionSource, titles map[string]string) (ScanRoot, error) {
+func (s *Service) scanRoot(ctx context.Context, source sessionSource, titles, aliases map[string]string, cache map[string]scanIndexEntry, nextIndex map[string]scanIndexEntry) (ScanRoot, error) {
 	root := ScanRoot{Key: source.Key, Label: source.Label, Path: source.Path, Archived: source.Archived, Groups: []Group{}, Files: []SessionFile{}}
 	if _, err := os.Stat(source.Path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -461,12 +628,18 @@ func (s *Service) scanRoot(ctx context.Context, source sessionSource, titles map
 	if err != nil {
 		return root, err
 	}
-	items, err := readSessionFiles(ctx, paths, source)
+	s.updateScanStatus(func(status *ScanStatus) { status.FilesTotal += len(paths) })
+	items, err := s.readSessionFiles(ctx, paths, source, cache)
 	if err != nil {
 		return root, err
 	}
+	for _, item := range items {
+		if item.ReadError == "" {
+			nextIndex[pathKey(item.Path)] = scanIndexEntry{SizeBytes: item.SizeBytes, LastModified: item.LastModified, File: item}
+		}
+	}
 	byID := resolveRoots(items)
-	root.Groups = buildGroups(items, byID, titles, source)
+	root.Groups = buildGroups(items, byID, titles, aliases, source)
 	groupByRoot := make(map[string]string, len(root.Groups))
 	for _, group := range root.Groups {
 		groupByRoot[group.RootID] = group.Title
@@ -502,7 +675,7 @@ func listJSONLFiles(ctx context.Context, root string) ([]string, error) {
 	return paths, err
 }
 
-func readSessionFiles(ctx context.Context, paths []string, source sessionSource) ([]SessionFile, error) {
+func (s *Service) readSessionFiles(ctx context.Context, paths []string, source sessionSource, cache map[string]scanIndexEntry) ([]SessionFile, error) {
 	items := make([]SessionFile, len(paths))
 	jobs := make(chan int)
 	var workers sync.WaitGroup
@@ -512,7 +685,22 @@ func readSessionFiles(ctx context.Context, paths []string, source sessionSource)
 			if ctx.Err() != nil {
 				return
 			}
-			item := readSessionFile(paths[index])
+			item := SessionFile{}
+			cached, hasCache := cache[pathKey(paths[index])]
+			if hasCache {
+				if info, statErr := os.Stat(paths[index]); statErr == nil && info.Size() == cached.SizeBytes && info.ModTime().UTC().Format(time.RFC3339Nano) == cached.LastModified {
+					item = cached.File
+					item.Path = paths[index]
+					item.Name = filepath.Base(paths[index])
+					s.updateScanStatus(func(status *ScanStatus) { status.IndexHits++; status.FilesCompleted++ })
+				} else {
+					hasCache = false
+				}
+			}
+			if !hasCache {
+				item = readSessionFile(paths[index])
+				s.updateScanStatus(func(status *ScanStatus) { status.IndexMisses++; status.FilesCompleted++ })
+			}
 			item.Storage, item.Archived = source.Key, source.Archived
 			items[index] = item
 		}
@@ -685,7 +873,7 @@ func resolveRoots(items []SessionFile) map[string]SessionFile {
 	return byID
 }
 
-func buildGroups(items []SessionFile, byID map[string]SessionFile, titles map[string]string, source sessionSource) []Group {
+func buildGroups(items []SessionFile, byID map[string]SessionFile, titles, aliases map[string]string, source sessionSource) []Group {
 	groupItems := make(map[string][]SessionFile)
 	for _, item := range items {
 		groupItems[item.RootID] = append(groupItems[item.RootID], item)
@@ -720,6 +908,9 @@ func buildGroups(items []SessionFile, byID map[string]SessionFile, titles map[st
 		}
 		sort.Strings(agents)
 		title, titleSource := titles[rootID], "Codex sidebar"
+		if alias := aliases[rootID]; alias != "" {
+			title, titleSource = alias, "Manual alias"
+		}
 		if title == "" {
 			title, titleSource = makeTitle(root.Prompt, root.CWD), "Derived from first request"
 		}

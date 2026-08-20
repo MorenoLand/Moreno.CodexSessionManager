@@ -208,7 +208,7 @@ async function findTranscriptIds() {
     try {
       for (const filePath of await listJsonlFiles(root)) {
         const name = path.basename(filePath);
-        const match = name.match(/([0-9a-f-]{36})(?:\.jsonl)?$/i);
+        const match = name.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\.jsonl)?$/i);
         if (match) ids.add(match[1].toLowerCase());
       }
     } catch {}
@@ -250,7 +250,7 @@ async function backupCatalogDatabase() {
 }
 
 async function removeCatalogRows(threadIds, backupPath = '') {
-  const ids = [...new Set(threadIds.map(String).filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+  const ids = [...new Set(threadIds.map(String).filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))];
   if (!ids.length) return { removed: 0, ids: [] };
   if (!backupPath) backupPath = await backupCatalogDatabase();
   if (SqliteDatabaseSync) {
@@ -317,7 +317,7 @@ async function listJsonlFiles(root) {
 async function readSessionFile(filePath) {
   const file = await stat(filePath);
   const name = path.basename(filePath);
-  const idMatch = name.match(/([0-9a-f-]{36})\.jsonl$/i);
+  const idMatch = name.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i);
   const item = {
     id: idMatch ? idMatch[1] : name,
     parent: '',
@@ -598,7 +598,7 @@ function revealFile(filePath) {
 }
 
 function threadIdFromPath(filePath) {
-  return path.basename(filePath).match(/([0-9a-f-]{36})\.jsonl$/i)?.[1] || '';
+  return path.basename(filePath).match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i)?.[1] || '';
 }
 
 async function serveStatic(request, response, pathname) {

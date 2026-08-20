@@ -787,6 +787,20 @@ export class ScanResult {
              */
             this["scannedAt"] = "";
         }
+        if (!("indexHits" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["indexHits"] = 0;
+        }
+        if (!("indexMisses" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["indexMisses"] = 0;
+        }
         if (!("stats" in $$source)) {
             /**
              * @member
@@ -846,34 +860,34 @@ export class ScanResult {
      * @returns {ScanResult}
      */
     static createFrom($$source = {}) {
-        const $$createField3_0 = $$createType13;
-        const $$createField4_0 = $$createType13;
         const $$createField5_0 = $$createType13;
-        const $$createField6_0 = $$createType15;
-        const $$createField7_0 = $$createType17;
-        const $$createField8_0 = $$createType17;
-        const $$createField9_0 = $$createType6;
+        const $$createField6_0 = $$createType13;
+        const $$createField7_0 = $$createType13;
+        const $$createField8_0 = $$createType15;
+        const $$createField9_0 = $$createType17;
+        const $$createField10_0 = $$createType17;
+        const $$createField11_0 = $$createType6;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
-            $$parsedSource["stats"] = $$createField3_0($$parsedSource["stats"]);
+            $$parsedSource["stats"] = $$createField5_0($$parsedSource["stats"]);
         }
         if ("currentStats" in $$parsedSource) {
-            $$parsedSource["currentStats"] = $$createField4_0($$parsedSource["currentStats"]);
+            $$parsedSource["currentStats"] = $$createField6_0($$parsedSource["currentStats"]);
         }
         if ("archivedStats" in $$parsedSource) {
-            $$parsedSource["archivedStats"] = $$createField5_0($$parsedSource["archivedStats"]);
+            $$parsedSource["archivedStats"] = $$createField7_0($$parsedSource["archivedStats"]);
         }
         if ("roots" in $$parsedSource) {
-            $$parsedSource["roots"] = $$createField6_0($$parsedSource["roots"]);
+            $$parsedSource["roots"] = $$createField8_0($$parsedSource["roots"]);
         }
         if ("groups" in $$parsedSource) {
-            $$parsedSource["groups"] = $$createField7_0($$parsedSource["groups"]);
+            $$parsedSource["groups"] = $$createField9_0($$parsedSource["groups"]);
         }
         if ("archivedGroups" in $$parsedSource) {
-            $$parsedSource["archivedGroups"] = $$createField8_0($$parsedSource["archivedGroups"]);
+            $$parsedSource["archivedGroups"] = $$createField10_0($$parsedSource["archivedGroups"]);
         }
         if ("files" in $$parsedSource) {
-            $$parsedSource["files"] = $$createField9_0($$parsedSource["files"]);
+            $$parsedSource["files"] = $$createField11_0($$parsedSource["files"]);
         }
         return new ScanResult(/** @type {Partial<ScanResult>} */($$parsedSource));
     }
@@ -965,6 +979,83 @@ export class ScanRoot {
             $$parsedSource["files"] = $$createField7_0($$parsedSource["files"]);
         }
         return new ScanRoot(/** @type {Partial<ScanRoot>} */($$parsedSource));
+    }
+}
+
+export class ScanStatus {
+    /**
+     * Creates a new ScanStatus instance.
+     * @param {Partial<ScanStatus>} [$$source = {}] - The source object to create the ScanStatus.
+     */
+    constructor($$source = {}) {
+        if (!("running" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["running"] = false;
+        }
+        if (!("cancelable" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["cancelable"] = false;
+        }
+        if (!("phase" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["phase"] = "";
+        }
+        if (!("filesTotal" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["filesTotal"] = 0;
+        }
+        if (!("filesCompleted" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["filesCompleted"] = 0;
+        }
+        if (!("indexHits" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["indexHits"] = 0;
+        }
+        if (!("indexMisses" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["indexMisses"] = 0;
+        }
+        if (!("cancelled" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["cancelled"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ScanStatus instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ScanStatus}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ScanStatus(/** @type {Partial<ScanStatus>} */($$parsedSource));
     }
 }
 
@@ -1291,6 +1382,41 @@ export class StorageSettingsUpdate {
     static createFrom($$source = {}) {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new StorageSettingsUpdate(/** @type {Partial<StorageSettingsUpdate>} */($$parsedSource));
+    }
+}
+
+export class TitleAlias {
+    /**
+     * Creates a new TitleAlias instance.
+     * @param {Partial<TitleAlias>} [$$source = {}] - The source object to create the TitleAlias.
+     */
+    constructor($$source = {}) {
+        if (!("rootId" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["rootId"] = "";
+        }
+        if (!("title" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["title"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TitleAlias instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {TitleAlias}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new TitleAlias(/** @type {Partial<TitleAlias>} */($$parsedSource));
     }
 }
 

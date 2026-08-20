@@ -17,9 +17,31 @@ async function request(path, options) {
   return result;
 }
 
+function browserAliases() {
+  try { return JSON.parse(localStorage.getItem('session-shelf.aliases') || '{}'); } catch { return {}; }
+}
+
+function applyBrowserAliases(data) {
+  const aliases = browserAliases();
+  const aliasFor = rootId => aliases[String(rootId || '').toLowerCase()];
+  const applyGroup = group => { const title = aliasFor(group.rootId); return title ? { ...group, title, titleSource: 'Manual alias', files: group.files.map(file => ({ ...file, groupTitle: title })) } : group; };
+  return { ...data, groups: (data.groups || []).map(applyGroup), archivedGroups: (data.archivedGroups || []).map(applyGroup), roots: (data.roots || []).map(root => ({ ...root, groups: (root.groups || []).map(applyGroup), files: (root.files || []).map(file => { const title = aliasFor(file.rootId); return title ? { ...file, groupTitle: title } : file; }) })), files: (data.files || []).map(file => { const title = aliasFor(file.rootId); return title ? { ...file, groupTitle: title } : file; }) };
+}
+
 export async function apiScan(includeArchived) {
   const service = await wailsService();
-  return service ? service.Scan(includeArchived) : request('/api/scan?includeArchived=' + (includeArchived ? '1' : '0'));
+  const result = service ? await service.Scan(includeArchived) : await request('/api/scan?includeArchived=' + (includeArchived ? '1' : '0'));
+  return service ? result : applyBrowserAliases(result);
+}
+
+export async function apiScanStatus() {
+  const service = await wailsService();
+  return service ? service.GetScanStatus() : { running: false, cancelable: false, phase: '', filesTotal: 0, filesCompleted: 0, indexHits: 0, indexMisses: 0, cancelled: false };
+}
+
+export async function apiCancelScan() {
+  const service = await wailsService();
+  return service ? service.CancelScan() : false;
 }
 
 export async function apiContext(filePath, limit) {
@@ -58,6 +80,17 @@ export async function apiReveal(filePath) {
 export async function apiRecycle(paths, removeCatalogRows) {
   const service = await wailsService();
   return service ? service.Recycle(paths, removeCatalogRows) : request('/api/recycle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths, removeCatalogRows }) });
+}
+
+export async function apiSaveTitleAlias(rootId, title) {
+  const service = await wailsService();
+  if (service) return service.SaveTitleAlias(rootId, title);
+  const aliases = browserAliases();
+  const normalized = String(title || '').trim();
+  if (normalized) aliases[String(rootId).toLowerCase()] = normalized;
+  else delete aliases[String(rootId).toLowerCase()];
+  localStorage.setItem('session-shelf.aliases', JSON.stringify(aliases));
+  return { rootId, title: normalized };
 }
 
 export async function apiReviewRecycle(paths, removeCatalogRows) {

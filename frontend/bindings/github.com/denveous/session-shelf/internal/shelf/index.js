@@ -21,9 +21,11 @@ export {
     RecycleReview,
     ScanResult,
     ScanRoot,
+    ScanStatus,
     SessionFile,
     Stats,
     StorageLocations,
     StorageSettings,
-    StorageSettingsUpdate
+    StorageSettingsUpdate,
+    TitleAlias
 } from "./models.js";
