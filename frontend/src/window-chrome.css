@@ -1,0 +1,13 @@
+.app-shell{flex-direction:column}
+.app-body{min-height:0;flex:1;display:flex}
+.window-chrome{height:42px;flex:0 0 42px;display:flex;align-items:stretch;border-bottom:1px solid #24324b;background:#080e1b;color:#dce7f6}
+.window-drag-region{--wails-draggable:drag;app-region:drag;min-width:0;flex:1;display:flex;align-items:center;gap:9px;padding:0 17px;user-select:none}
+.window-app-icon{display:grid;place-items:center;width:22px;height:22px;border:1px solid #314d79;border-radius:5px;color:#76a9ff;background:#0f1d32}
+.window-drag-region strong{font-size:12px;font-weight:680;letter-spacing:.01em}
+.window-app-subtitle{color:#7388a8;font-size:11px}
+.window-controls{display:flex;height:100%;flex:0 0 auto}
+.window-control{--wails-draggable:no-drag;app-region:no-drag;width:46px;height:100%;display:grid;place-items:center;border:0;border-radius:0;background:transparent;color:#8fa4c1}
+.window-control:hover{background:#172b4e;color:#edf4ff}
+.window-control.close:hover{background:#c43f4b;color:white}
+.window-control .icon{pointer-events:none}
+@media (max-width:900px){.window-app-subtitle{display:none}.window-drag-region{padding:0 10px}.window-control{width:42px}}

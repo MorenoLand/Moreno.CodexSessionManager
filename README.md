@@ -78,6 +78,7 @@ Override locations per process when the Codex installation uses a different layo
 - Selections persist across roots in the Review queue, so bulk review does not silently narrow to the currently highlighted conversation.
 - **Rename** creates a local title alias when the Codex catalog title is missing or noisy; aliases are stored separately from transcripts.
 - The Wails backend keeps a metadata-only scan index and exposes cache hits, scan progress, and cancellation for large storage trees.
+- The Wails desktop shell uses a frameless, draggable custom title bar with native window controls; browser mode keeps the same visual chrome without pretending to control the browser window.
 - Global chrome does not display full filesystem paths; those remain available on the Storage locations page.
 
 ## Safety model

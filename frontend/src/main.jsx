@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './context.css';
 import './file-table.css';
+import './window-chrome.css';
 import { apiCancelScan, apiCatalog, apiContext, apiDiagnostics, apiExport, apiPickStorage, apiRecycle, apiRemoveCatalogRows, apiReveal, apiReviewRecycle, apiSaveSettings, apiSaveTitleAlias, apiScan, apiScanStatus, apiSearchContext, apiSettings } from './backend.js';
+import { closeWindow, hasDesktopWindow, isWindowMaximised, minimiseWindow, subscribeWindowState, toggleMaximiseWindow } from './windowControls.js';
 
 const icons = {
   archive: 'M4 7h16M5 7v12h14V7M8 4h8l1 3H7l1-3',
@@ -18,7 +20,10 @@ const icons = {
   home: 'M4 11l8-7 8 7M6 10v9h12v-9M10 19v-5h4v5',
   info: 'M12 11v5M12 7h.01M21 12a9 9 0 1 1-18 0',
   message: 'M5 5h14v10H9l-4 4zM8 9h8M8 12h5',
+  maximize: 'M5 5h14v14H5z',
+  minimize: 'M5 12h14',
   refresh: 'M20 11a8 8 0 0 0-14-4L4 9M4 5v4h4M4 13a8 8 0 0 0 14 4l2-2M20 19v-4h-4',
+  restore: 'M8 8h11v11H8zM5 5h11v3M5 5v11h3',
   search: 'M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15ZM16 16l5 5',
   settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM4 12h2M18 12h2M12 4v2M12 18v2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4',
   trash: 'M5 7h14M10 11v6M14 11v6M7 7l1 13h8l1-13M9 7V4h6v3',
@@ -78,6 +83,19 @@ function FilterControls({ filters, setFilters, agents, compact = false }) {
   return <div className={'filter-controls ' + (compact ? 'compact' : '')}><label className="filter-field"><span>Minimum size (GiB)</span><input type="number" min="0" step="0.1" value={filters.minGiB} onChange={event => update('minGiB', event.target.value)} placeholder="Any size" /></label><label className="filter-field"><span>Minimum files</span><input type="number" min="1" step="1" value={filters.minFiles} onChange={event => update('minFiles', event.target.value)} placeholder="Any count" /></label><label className="filter-field"><span>Agent</span><select value={filters.agent} onChange={event => update('agent', event.target.value)}><option value="all">All agents</option><option value="root">Root / unnamed</option>{agents.map(agent => <option key={agent} value={agent}>{agent}</option>)}</select></label><label className="filter-check"><input type="checkbox" checked={filters.forkedOnly} onChange={event => update('forkedOnly', event.target.checked)} /><span>Forked sessions only</span></label><button className="button" onClick={() => setFilters(defaultFilters)}>Clear filters</button></div>;
 }
 
+function WindowChrome() {
+  const desktop = hasDesktopWindow();
+  const [maximised, setMaximised] = useState(false);
+  useEffect(() => {
+    if (!desktop) return undefined;
+    let active = true;
+    const unsubscribe = subscribeWindowState(value => { if (active) setMaximised(value); });
+    isWindowMaximised().then(value => { if (active) setMaximised(value); }).catch(() => {});
+    return () => { active = false; unsubscribe(); };
+  }, [desktop]);
+  async function toggleMaximise() { try { await toggleMaximiseWindow(); setMaximised(await isWindowMaximised()); } catch {} }
+  return <div className="window-chrome" role="toolbar" aria-label="Window controls"><div className="window-drag-region" onDoubleClick={desktop ? toggleMaximise : undefined}><span className="window-app-icon"><Icon name="archive" size={16} /></span><strong>Session Shelf</strong><span className="window-app-subtitle">Local session manager</span></div>{desktop && <div className="window-controls"><button className="window-control" type="button" onClick={() => minimiseWindow().catch(() => {})} aria-label="Minimize" title="Minimize"><Icon name="minimize" size={15} /></button><button className="window-control" type="button" onClick={toggleMaximise} aria-label={maximised ? 'Restore' : 'Maximize'} title={maximised ? 'Restore' : 'Maximize'}><Icon name={maximised ? 'restore' : 'maximize'} size={14} /></button><button className="window-control close" type="button" onClick={() => closeWindow().catch(() => {})} aria-label="Close" title="Close"><Icon name="x" size={15} /></button></div>}</div>;
+}
 function Sidebar({ view, setView, onScan, queueCount }) {
   const primary = [['overview', 'Overview', 'home'], ['roots', 'Active sessions', 'branch'], ['archived', 'Archived sessions', 'archive'], ['all', 'All files', 'file'], ['catalog', 'Catalog DB', 'database']];
   const settings = [['locations', 'Storage locations', 'folder'], ['filters', 'Filters', 'filter'], ['preferences', 'Preferences', 'settings'], ['diagnostics', 'Diagnostics', 'info']];
@@ -449,6 +467,6 @@ function App() {
   if (view === 'preferences') content = <PreferencesView preferences={preferences} updatePreferences={updatePreferences} />;
   if (view === 'diagnostics') content = <DiagnosticsView />;
   const browsingRoots = view === 'roots' || view === 'archived';
-  return <div className="app-shell"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} onCancel={cancelScan} scanning={scanning} scanStatus={scanStatus} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div>{reviewFiles && <ReviewModal files={reviewFiles} safety={recycleReview} onClose={() => { setReviewFiles(null); setRecycleReview(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} reviewBusy={reviewBusy} removeCatalogRows={removeCatalogRows} onCleanupChange={changeCleanup} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
+  return <div className="app-shell"><WindowChrome /><div className="app-body"><Sidebar view={view} setView={setView} onScan={scan} queueCount={selectedPaths.size} /><div className="main-shell"><Header data={data} onScan={scan} onCancel={cancelScan} scanning={scanning} scanStatus={scanStatus} view={view} />{error && <div className="error-banner"><Icon name="info" /><span>{error}</span><button onClick={() => setError('')}><Icon name="x" /></button></div>}<main className={'workspace ' + (browsingRoots ? '' : 'single')}>{content}</main><footer className="statusbar"><span><span className="status-dot" />Local only</span><span>{data ? data.stats.groupCount + ' sessions / ' + data.stats.fileCount + ' JSONL files' : 'Preparing scan'}</span></footer></div></div>{reviewFiles && <ReviewModal files={reviewFiles} safety={recycleReview} onClose={() => { setReviewFiles(null); setRecycleReview(null); setRemoveCatalogRows(false); }} onConfirm={moveSelected} busy={moving} reviewBusy={reviewBusy} removeCatalogRows={removeCatalogRows} onCleanupChange={changeCleanup} />}{toast && <div className="toast"><Icon name="check" size={16} />{toast}</div>}</div>;
 }
 createRoot(document.getElementById('root')).render(<App/>);

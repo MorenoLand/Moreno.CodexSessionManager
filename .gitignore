@@ -2,6 +2,7 @@ node_modules/
 .task/
 dist/
 build/bin/
+bin/
 build/android/.gradle/
 *.test
 *.exe

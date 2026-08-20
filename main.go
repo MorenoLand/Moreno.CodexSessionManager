@@ -31,7 +31,11 @@ func main() {
 		Height:           900,
 		MinWidth:         1100,
 		MinHeight:        650,
+		Frameless:        true,
 		BackgroundColour: application.NewRGB(11, 16, 32),
+		Windows: application.WindowsWindow{
+			NonClientRegionSupport: true,
+		},
 		URL:              "/",
 	})
 	if err := app.Run(); err != nil {
