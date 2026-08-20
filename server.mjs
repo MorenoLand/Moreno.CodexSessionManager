@@ -12,7 +12,8 @@ let SqliteDatabaseSync = null;
 try { ({ DatabaseSync: SqliteDatabaseSync } = await import('node:sqlite')); } catch {}
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
-const distDir = path.join(appDir, 'dist');
+const frontendDir = path.join(appDir, 'frontend');
+const distDir = path.join(frontendDir, 'dist');
 const codexHome = path.resolve(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
 const defaultStorageConfig = {
   currentRoot: path.resolve(process.env.SESSION_SHELF_ROOT || path.join(codexHome, 'sessions')),
@@ -620,7 +621,7 @@ const server = http.createServer(async (request, response) => {
 await mkdir(distDir, { recursive: true });
 if (process.env.SESSION_SHELF_DEV !== '0') {
   const { createServer: createViteServer } = await import('vite');
-  viteServer = await createViteServer({ server: { middlewareMode: true, hmr: { server } } });
+  viteServer = await createViteServer({ root: frontendDir, server: { middlewareMode: true, hmr: { server } } });
 }
 server.listen(port, '127.0.0.1', () => {
   console.log(`Session Shelf listening at http://127.0.0.1:${port}`);

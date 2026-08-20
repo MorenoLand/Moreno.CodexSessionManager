@@ -1,18 +1,20 @@
 # Session Shelf
 
-Session Shelf is a local-only cross-platform browser for reviewing Codex JSONL session storage before reclaiming disk space. It groups forked transcripts by conversation root, shows exact file paths and sizes, previews the first messages on demand, and keeps current and archived sessions in separate views.
+Session Shelf is a local-only cross-platform Wails desktop app for reviewing Codex JSONL session storage before reclaiming disk space. It groups forked transcripts by conversation root, shows exact file paths and sizes, previews the first messages on demand, and keeps current and archived sessions in separate views.
 
 It does not upload transcript contents or modify files during a scan. Selected JSONL files are sent to the operating system trash only after a typed `MOVE` confirmation.
 
 ## Requirements
 
-- Node.js 22.5 or newer
+- Go 1.25 or newer
+- Wails v3 CLI
+- Node.js 22.5 or newer and npm
 - A local Codex session directory, or explicit path overrides
-- SQLite access for the Catalog DB page: Node’s built-in `node:sqlite` is used first; install the `sqlite3` command and set `CODEX_SQLITE_COMMAND` only when using a different SQLite executable
+- Windows WebView2, macOS Xcode Command Line Tools, or the Linux GTK/WebKitGTK dependencies required by Wails
 
 The Codex app and CLI have different platform distributions, so Session Shelf uses the filesystem layout rather than assuming a particular desktop executable. See the [Codex app announcement](https://openai.com/index/introducing-the-codex-app/) and [Codex CLI documentation](https://learn.chatgpt.com/docs/codex/cli) for the current official platform details.
 
-## Run without a build
+## Run in the browser
 
 ```sh
 npm ci
@@ -21,14 +23,21 @@ npm run dev
 
 Open `http://127.0.0.1:4310/`. `npm start` is an equivalent direct run command. The development server serves the React source directly and updates client changes through Vite HMR; restart it after changing `server.mjs`.
 
-The production-style static path is optional:
+## Run as a Wails desktop app
+
+```sh
+npm ci
+npm run build
+wails3 generate bindings -b
+wails3 dev
+```
+
+The production desktop build is:
 
 ```sh
 npm run build
-SESSION_SHELF_DEV=0 npm start
+wails3 build
 ```
-
-On PowerShell, use `$env:SESSION_SHELF_DEV = '0'` before `npm start`.
 
 ## Storage locations
 

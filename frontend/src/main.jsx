@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './context.css';
 import './file-table.css';
+import { apiCatalog, apiContext, apiRecycle, apiRemoveCatalogRows, apiReveal, apiSaveSettings, apiScan, apiSettings } from './backend.js';
 
 const icons = {
   archive: 'M4 7h16M5 7v12h14V7M8 4h8l1 3H7l1-3',
@@ -114,9 +115,7 @@ function Inspector({ group, selectedPaths, kept, setKept, toggleFile, toggleGrou
     setContextError('');
     setContextLoading(true);
     try {
-      const response = await fetch('/api/context?path=' + encodeURIComponent(filePath) + '&limit=' + previewLimit);
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Context preview failed');
+      const result = await apiContext(filePath, previewLimit);
       setContext(result);
     } catch (error) {
       setContextError(error.message);
@@ -146,9 +145,7 @@ function CatalogView() {
   const [sort, setSort] = useState({ key: 'source_updated_at', direction: 'desc' });
   const load = useCallback(async () => {
     try {
-      const response = await fetch('/api/catalog');
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Catalog load failed');
+      const result = await apiCatalog();
       setCatalog(result);
       setError('');
     } catch (loadError) {
@@ -168,9 +165,7 @@ function CatalogView() {
     if (!pending || confirmation !== 'REMOVE') return;
     setBusy(true);
     try {
-      const response = await fetch('/api/catalog/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'REMOVE', threadIds: [pending.thread_id] }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Catalog row removal failed');
+      const result = await apiRemoveCatalogRows('REMOVE', [pending.thread_id]);
       setPending(null);
       setConfirmation('');
       await load();
@@ -203,15 +198,13 @@ function StorageLocationsView({ onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  useEffect(() => { fetch('/api/settings').then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Settings load failed'); setSettings(result); setDefaults(result.defaults); setForm({ currentRoot: result.currentRoot, archivedRoot: result.archivedRoot, catalogDb: result.catalogDb }); }).catch(loadError => setError(loadError.message)); }, []);
+  useEffect(() => { apiSettings().then(result => { setSettings(result); setDefaults(result.defaults); setForm({ currentRoot: result.currentRoot, archivedRoot: result.archivedRoot, catalogDb: result.catalogDb }); }).catch(loadError => setError(loadError.message)); }, []);
   function update(key, value) { setForm(current => ({ ...current, [key]: value })); setNotice(''); }
   async function save() {
     setBusy(true); setError(''); setNotice('');
     try {
-      const response = await fetch('/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Settings save failed');
-      setSettings(result.settings); setForm({ currentRoot: result.settings.currentRoot, archivedRoot: result.settings.archivedRoot, catalogDb: result.settings.catalogDb });
+      const result = await apiSaveSettings(form);
+      setSettings(result); setForm({ currentRoot: result.currentRoot, archivedRoot: result.archivedRoot, catalogDb: result.catalogDb });
       await onSaved();
       setNotice('Saved locations and rescanned sessions.');
     } catch (saveError) { setError(saveError.message); } finally { setBusy(false); }
@@ -249,9 +242,7 @@ function App() {
   const scan = useCallback(async () => {
     setScanning(true);
     try {
-      const response = await fetch('/api/scan?includeArchived=' + (preferences.includeArchived ? '1' : '0'));
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Session scan failed');
+      const result = await apiScan(preferences.includeArchived);
       setData(result);
       setError('');
     } catch (scanError) {
@@ -289,7 +280,7 @@ function App() {
     if (keep) setSelectedPaths(current => new Set([...current].filter(filePath => !selectedGroup.files.some(file => file.path === filePath))));
   }
   async function reveal(filePath) {
-    try { await fetch('/api/reveal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: filePath }) }); } catch {}
+    try { await apiReveal(filePath); } catch {}
   }
   function review() {
     const files = selectedGroup?.files.filter(file => selectedPaths.has(file.path)) || [];
@@ -299,9 +290,7 @@ function App() {
     if (!reviewFiles?.length) return;
     setMoving(true);
     try {
-      const response = await fetch('/api/recycle', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ paths: reviewFiles.map(file => file.path), removeCatalogRows }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Recycle Bin move failed');
+      const result = await apiRecycle(reviewFiles.map(file => file.path), removeCatalogRows);
       setSelectedPaths(current => new Set([...current].filter(filePath => !reviewFiles.some(file => file.path === filePath))));
       setReviewFiles(null);
       setToast(result.catalog?.error ? 'Files moved; Catalog DB cleanup failed: ' + result.catalog.error : 'Moved ' + reviewFiles.length + ' files to system trash' + (result.catalog?.removed ? ' and removed ' + result.catalog.removed + ' Catalog DB entries.' : '.'));
