@@ -10,6 +10,26 @@ tasks:
     cmds:
       - go mod tidy
 
+  compress:binary:
+    summary: Optionally compresses a built binary with UPX
+    internal: true
+    vars:
+      COMPRESS: '{{.COMPRESS | default "true"}}'
+    cmds:
+      - cmd: 'powershell -NoProfile -Command "if (''{{.COMPRESS}}'' -eq ''false'') { Write-Host ''Binary compression disabled (COMPRESS=false).''; exit 0 }; if (-not (Get-Command upx -ErrorAction SilentlyContinue)) { Write-Host ''UPX not found; leaving binary uncompressed.''; exit 0 }; & upx --best --lzma ''{{.BINARY}}''; exit 0"'
+        platforms: [windows]
+      - cmd: |
+          if [ "{{.COMPRESS}}" = "false" ]; then
+            echo "Binary compression disabled (COMPRESS=false)."
+          elif command -v upx >/dev/null 2>&1; then
+            if ! upx --best --lzma "{{.BINARY}}"; then
+              echo "Warning: UPX could not compress {{.BINARY}}; leaving it uncompressed."
+            fi
+          else
+            echo "UPX not found; leaving binary uncompressed."
+          fi
+        platforms: [linux, darwin]
+
   install:frontend:deps:
     summary: Install frontend dependencies
     run: once

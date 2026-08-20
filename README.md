@@ -39,6 +39,8 @@ npm run build
 wails3 build
 ```
 
+Production builds use stripped linker flags and are packed with UPX when it is installed. Compression is best effort, so a missing or incompatible UPX installation does not block the build; set `COMPRESS=false` to disable it explicitly.
+
 ## Storage locations
 
 By default the server resolves the current user’s Codex home directory and scans:
